@@ -33,11 +33,12 @@ jobs:
   build:
     needs: prepare
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-latest
             platform: mac
             arch: arm64
             label: macOS-arm64

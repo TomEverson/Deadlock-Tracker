@@ -37,6 +37,8 @@ pnpm --filter @deadlock/desktop dist:linux  # .AppImage + .tar.gz
 Artifacts are written to `apps/desktop/release/`. Build each target on its
 native OS, or use the **Release** GitHub Actions workflow, which builds macOS
 (arm64), Windows (x64), and Linux (x64) and attaches them to the release.
+SQLite uses the N-API prebuilds shipped with `better-sqlite3`, so packaging
+does not need a local node-gyp/Visual Studio toolchain.
 
 The macOS release is ad-hoc signed and not notarized. On first launch,
 right-click the app and choose **Open**, or clear the quarantine flag:

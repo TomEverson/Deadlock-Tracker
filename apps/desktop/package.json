@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Deadlock match tracker — syncs from Steam locally, shares through Cloudflare.",
+  "description": "Deadlock match tracker \u2014 syncs from Steam locally, shares through Cloudflare.",
   "author": "Tom Everson",
   "main": "./out/main/index.js",
   "scripts": {
@@ -14,8 +14,7 @@
     "dist:win": "electron-vite build && electron-builder --win --publish never",
     "dist:linux": "electron-vite build && electron-builder --linux --publish never",
     "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit",
-    "postinstall": "electron-rebuild --only better-sqlite3 --module-dir ."
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@deadlock/core": "workspace:*",
@@ -28,7 +27,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.2.1",
     "@fontsource-variable/inter": "^5.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-router": "^1.170.46",
