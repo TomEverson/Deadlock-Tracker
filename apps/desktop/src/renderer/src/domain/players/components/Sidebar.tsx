@@ -18,12 +18,10 @@ function Logo() {
 
 /** App navigation: search, you, and your Steam friends (as of the last sync). */
 export function Sidebar({ friendList }: { friendList: FriendList }) {
-  const { self, friends } = friendList
+  const { friends } = friendList
   return (
     <nav className="flex h-full flex-col gap-4 px-3 py-4" aria-label="Main">
-      {window.api.platform === 'darwin' && <div className="app-drag -mx-3 -mt-4 h-7 shrink-0" aria-hidden />}
       <Logo />
-      <SearchForm />
 
       <div className="grid gap-0.5">
         <Link to="/" className={itemClass} activeProps={{ className: activeClass }} activeOptions={{ exact: true, includeSearch: false }}>
@@ -32,13 +30,18 @@ export function Sidebar({ friendList }: { friendList: FriendList }) {
           </svg>
           Home
         </Link>
-        {self && (
-          <Link to="/players/$accountId" params={{ accountId: self.accountId }} className={itemClass} activeProps={{ className: activeClass }}>
-            <Avatar src={self.avatar} name={self.name} size={16} />
-            <span className="truncate">{self.name}</span>
-            <span className="ml-auto text-xs text-muted">You</span>
-          </Link>
-        )}
+        <Link to="/analysis" className={itemClass} activeProps={{ className: activeClass }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden className="text-muted">
+            <path d="M2.5 13.5h11M4.5 11V8M8 11V4.5M11.5 11V6.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          Analysis
+        </Link>
+        <Link to="/matches" className={itemClass} activeProps={{ className: activeClass }} activeOptions={{ exact: true }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden className="text-muted">
+            <path d="M3 4h10M3 8h10M3 12h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          Matches
+        </Link>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">

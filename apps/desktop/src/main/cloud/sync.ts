@@ -211,6 +211,20 @@ export async function cloudSync(): Promise<CloudSyncResult | null> {
   }
 }
 
+/** Push only: share what this install downloaded, without pulling. */
+export async function cloudPush(): Promise<CloudSyncResult | null> {
+  if (!(await getCloudToken())) return null
+  try {
+    const pushed = await push()
+    await setState('cloud.lastSync', { at: new Date().toISOString(), error: null })
+    return { pulled: 0, detailsPulled: 0, pushed }
+  } catch (err) {
+    const message = err instanceof CloudError || err instanceof Error ? err.message : String(err)
+    await setState('cloud.lastSync', { at: new Date().toISOString(), error: message })
+    throw err
+  }
+}
+
 /** Cloud-before-Valve: pull whichever of these match details the cloud already has. */
 export function cloudDetailsSource(): DetailsSource {
   return {

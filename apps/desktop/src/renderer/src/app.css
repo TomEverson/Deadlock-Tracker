@@ -155,9 +155,14 @@ body {
   display: none;
 }
 
-/* macOS: the hidden title bar's drag area. */
+/* macOS: the hidden title bar's drag area. Controls inside it must opt out
+   or they can't be clicked. */
 .app-drag {
   -webkit-app-region: drag;
+  user-select: none;
+}
+.app-no-drag {
+  -webkit-app-region: no-drag;
 }
 
 /* Desktop app: no rubber-band text selection on chrome, pointer cursor stays default. */

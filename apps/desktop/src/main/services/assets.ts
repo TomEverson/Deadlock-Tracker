@@ -1,6 +1,7 @@
 import { fetchHeroes, fetchRanks, fetchUpgradeItems } from './deadlock-api'
 import type { HeroInfo, ItemInfo, RankInfo } from '@deadlock/core/domain/assets/types'
 import { toItemSections } from '@deadlock/core/domain/assets/item-tooltip'
+import { itemTags } from '@deadlock/core/domain/assets/item-tags'
 
 // Reference data changes once per patch. The fetches are edge-cached for a
 // day (see deadlock-api.ts); this per-isolate memo just avoids re-parsing
@@ -55,6 +56,7 @@ export const getItemMap = memo(async (): Promise<Map<number, ItemInfo>> => {
         cost: i.cost ?? null,
         isActive: i.activation != null && i.activation !== 'passive',
         sections: toItemSections(i),
+        tags: itemTags(i),
       },
     ]),
   )

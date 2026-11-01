@@ -33,6 +33,8 @@ function RequestUsage({ label, used }: { label: string; used: number }) {
 
 const button = 'h-8 rounded-md border border-line px-3 text-sm text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50'
 
+const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+
 function SettingsPage() {
   const status = useSyncStatus()
 
@@ -67,9 +69,14 @@ function SettingsPage() {
                   <span className="text-muted">Not synced yet.</span>
                 )}
                 {status.message && <p className={`mt-1 text-xs ${status.messageTone === 'error' ? 'text-loss' : 'text-muted'}`}>{status.message}</p>}
-                {status.backoffUntil && !status.message && (
+                {status.historyBackoffUntil && !status.message && (
                   <p className="mt-1 text-xs text-muted">
-                    Steam rate limit hit. Requests resume at {new Date(status.backoffUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
+                    Match history requests are paused until {clock(status.historyBackoffUntil)}.
+                  </p>
+                )}
+                {status.detailsBackoffUntil && !status.message && (
+                  <p className="mt-1 text-xs text-muted">
+                    Match detail requests are paused until {clock(status.detailsBackoffUntil)}.
                   </p>
                 )}
               </div>
@@ -82,7 +89,7 @@ function SettingsPage() {
                 <button
                   type="button"
                   className={button}
-                  disabled={!status.steam || status.state === 'running' || status.backoffUntil !== null}
+                  disabled={!status.steam || status.state === 'running' || status.historyBackoffUntil !== null}
                   onClick={() => void window.api.sync.run()}
                 >
                   Sync now
@@ -90,7 +97,7 @@ function SettingsPage() {
                 <button
                   type="button"
                   className={button}
-                  disabled={!status.steam || status.state === 'running' || status.backoffUntil !== null}
+                  disabled={!status.steam || status.state === 'running' || status.historyBackoffUntil !== null}
                   title="Re-reads every match history from the start. Uses more Steam requests."
                   onClick={() => void window.api.sync.run({ full: true })}
                 >

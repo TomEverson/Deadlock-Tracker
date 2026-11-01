@@ -24,6 +24,9 @@ export interface ItemSection {
   stats: ItemStat[]
 }
 
+/** What an item counters; see item-tags.ts. */
+export type ItemTag = 'antiHeal' | 'bulletResist' | 'spiritResist' | 'shred' | 'statusResist'
+
 export interface ItemInfo {
   id: number
   name: string
@@ -33,6 +36,7 @@ export interface ItemInfo {
   cost: number | null
   isActive: boolean
   sections: ItemSection[]
+  tags: ItemTag[]
 }
 
 export interface RankInfo {

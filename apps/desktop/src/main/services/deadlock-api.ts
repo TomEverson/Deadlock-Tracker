@@ -130,6 +130,128 @@ export function fetchMateStats(accountId: number) {
   return apiGet(`/v1/players/${accountId}/mate-stats`, z.array(mateStat), { min_matches_played: 2 })
 }
 
+// ---------------------------------------------------------------- matches
+
+/**
+ * One match's metadata file (Zstandard, exactly as Valve publishes it) from the
+ * community API's cache.
+ *
+ * `disable_steam=true` keeps the request on their cached tier: a match they
+ * haven't ingested answers a plain 404 instead of triggering a Steam fetch, so
+ * this never spends a GC request — theirs or ours. Null means "not cached",
+ * and the caller falls back to the Game Coordinator.
+ */
+const historyEntry = z.object({
+  match_id: z.number(),
+  hero_id: z.number(),
+  hero_level: z.number(),
+  start_time: z.number(),
+  game_mode: z.number(),
+  match_mode: z.number(),
+  player_team: z.number(),
+  player_kills: z.number(),
+  player_deaths: z.number(),
+  player_assists: z.number(),
+  denies: z.number(),
+  net_worth: z.number(),
+  last_hits: z.number(),
+  abandoned_time_s: z.number().nullish(),
+  match_duration_s: z.number(),
+  match_result: z.number(),
+})
+
+/**
+ * A player's match history as deadlock-api has it stored: the same fields
+ * as the Game Coordinator's history (HistoryEntry), no Steam request on our
+ * side. only_stored_history stops the API from spending its own Steam
+ * requests on our behalf, so it may lag the GC by a few matches.
+ */
+export function fetchCommunityMatchHistory(accountId: number) {
+  return apiGet(`/v1/players/${accountId}/match-history`, z.array(historyEntry), { only_stored_history: true })
+}
+
+// ------------------------------------------------------------ analytics
+// Benchmarks for the cross-match coaching (shared 200 req/min per IP across
+// all analytics endpoints; responses are cached server-side for an hour).
+
+const ANALYTICS_TIMEOUT_MS = 45_000
+
+const metricDist = z.object({
+  avg: z.number(),
+  std: z.number(),
+  percentile1: z.number(),
+  percentile5: z.number(),
+  percentile10: z.number(),
+  percentile25: z.number(),
+  percentile50: z.number(),
+  percentile75: z.number(),
+  percentile90: z.number(),
+  percentile95: z.number(),
+  percentile99: z.number(),
+})
+export type MetricDist = z.infer<typeof metricDist>
+
+/** Per-match distribution of each stat (one row per player per match) for the filtered matches. */
+export function fetchPlayerMetrics(params: { hero_ids?: string; account_ids?: string; min_average_badge?: number; max_average_badge?: number; min_unix_timestamp?: number; match_mode?: string; game_mode?: string; include_buff_metrics?: boolean }) {
+  return apiGet('/v1/analytics/player-stats/metrics', z.record(z.string(), metricDist), params, { timeoutMs: ANALYTICS_TIMEOUT_MS })
+}
+
+const heroStat = z.object({
+  hero_id: z.number(),
+  matches: z.number(),
+  wins: z.number(),
+  total_player_damage: z.number(),
+  total_boss_damage: z.number(),
+  total_net_worth: z.number(),
+  total_neutral_damage: z.number(),
+  total_deaths: z.number(),
+})
+export type HeroStat = z.infer<typeof heroStat>
+
+/** Totals per hero (matches, wins, damage, objective damage, souls…). */
+export function fetchHeroStats(params: { min_average_badge?: number; max_average_badge?: number; min_unix_timestamp?: number; match_mode?: string; game_mode?: string }) {
+  return apiGet('/v1/analytics/hero-stats', z.array(heroStat), params, { timeoutMs: ANALYTICS_TIMEOUT_MS })
+}
+
+const itemStat = z.object({
+  item_id: z.number(),
+  matches: z.number(),
+  wins: z.number(),
+  players: z.number(),
+  avg_buy_time_s: z.number().nullish(),
+})
+export type ItemStat = z.infer<typeof itemStat>
+
+/** How often and when each item is bought on a hero. */
+export function fetchItemStats(params: { hero_id: number; min_average_badge?: number; max_average_badge?: number; min_unix_timestamp?: number; min_matches?: number; match_mode?: string; game_mode?: string }) {
+  return apiGet('/v1/analytics/item-stats', z.array(itemStat), params, { timeoutMs: ANALYTICS_TIMEOUT_MS })
+}
+
+export async function fetchCachedMatchMetadata(matchId: number): Promise<Buffer | null> {
+  const url = new URL(`/v1/matches/${matchId}/metadata/raw`, BASE_URL)
+  url.searchParams.set('disable_steam', 'true')
+
+  const headers: Record<string, string> = { accept: 'application/octet-stream' }
+  const apiKey = process.env.DEADLOCK_API_KEY
+  if (apiKey) headers['X-API-KEY'] = apiKey
+
+  let res: Response
+  const started = Date.now()
+  try {
+    res = await fetch(url, { headers, signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) })
+    const ms = Date.now() - started
+    if (ms > SLOW_LOG_MS) console.warn(`[deadlock-api] slow ${ms}ms ${url.pathname}`)
+  } catch (err) {
+    throw new DeadlockApiError(`Request to ${url.pathname} failed: ${err instanceof Error ? err.message : String(err)}`, 0)
+  }
+
+  if (res.status === 404) return null
+  if (!res.ok) throw new DeadlockApiError(`${url.pathname} returned ${res.status}`, res.status, res.status === 429 ? retryAfterFrom(await res.text().catch(() => ''), res) : null)
+
+  const body = Buffer.from(await res.arrayBuffer())
+  return body.length > 0 ? body : null
+}
+
 // ------------------------------------------------------------- reference data
 
 const DAY = 60 * 60 * 24
@@ -156,6 +278,8 @@ const itemProperty = z.object({
   value: z.union([z.string(), z.number()]).nullish(),
   prefix: z.string().nullish(),
   postfix: z.string().nullish(),
+  negative_attribute: z.boolean().nullish(),
+  tooltip_section: z.string().nullish(),
 })
 
 const tooltipSection = z.object({
@@ -185,6 +309,8 @@ const item = z.object({
   item_tier: z.number().nullish(),
   item_slot_type: z.string().nullish(),
   cost: z.number().nullish(),
+  disabled: z.boolean().nullish(),
+  shopable: z.boolean().nullish(),
 })
 
 export function fetchUpgradeItems() {

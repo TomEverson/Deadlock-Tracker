@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ItemInfo, ItemSection } from '@deadlock/core/domain/assets/types'
-import { formatSouls } from '@deadlock/core/lib/format'
 
 const CARD_W = 288
 const OPEN_DELAY_MS = 120
@@ -30,7 +29,7 @@ function ItemCard({ item, meta, style }: { item: ItemInfo; meta?: ReactNode; sty
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: SLOT_COLOR[item.slot] }} />
             <span>{SLOT_NAME[item.slot]}</span>
             {item.tier ? <span>· Tier {item.tier}</span> : null}
-            {item.cost ? <span className="num">· {formatSouls(item.cost)} souls</span> : null}
+            {item.cost ? <span className="num">· {item.cost} souls</span> : null}
           </div>
         </div>
         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${item.isActive ? 'bg-accent-bg text-accent' : 'bg-surface-2 text-muted'}`}>

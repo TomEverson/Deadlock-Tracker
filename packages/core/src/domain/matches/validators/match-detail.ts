@@ -5,7 +5,13 @@ import { z } from 'zod'
 // older rows (cli/lib/match-details.ts); until then they still render, with
 // fields added since shown as missing.
 //   v1: initial   v2: + per-player deaths, snapshots, lanes, soul sources; objectives, Mid-Boss (analysis)
-export const MATCH_DETAIL_VERSION = 2
+//   v3: + death/killer positions, per-player movement paths (rotation and fight presence)
+//   v4: + cumulative hero-kill souls and souls lost on death per snapshot (fight soul swings)
+//   v5: + per-player objective stats: camps, power-ups, bounty/comeback/breakable souls, unspent souls
+export const MATCH_DETAIL_VERSION = 5
+
+/** Map position in units of trim-metadata's COORD_SCALE. */
+const storedPos = z.tuple([z.number(), z.number()])
 
 const storedItem = z.object({
   itemId: z.number(),
@@ -17,6 +23,17 @@ const storedDeath = z.object({
   t: z.number(), // game time, seconds
   killerSlot: z.number().nullable(), // null = not killed by a hero (troopers, objectives…)
   respawnS: z.number(),
+  // v3
+  pos: storedPos.nullable().default(null),
+  killerPos: storedPos.nullable().default(null),
+})
+
+// v3: one sample every pathStepS seconds from game start.
+const storedPath = z.object({
+  x: z.array(z.number()),
+  y: z.array(z.number()),
+  hp: z.array(z.number()), // 0..100, lowest in the window
+  combat: z.array(z.number()), // 0 out of combat, 1 vs heroes, 2 vs troopers/buildings, 3 vs neutrals
 })
 
 // Per-player stats every 3 min until 15:00, then every 5 min, plus the end.
@@ -32,6 +49,9 @@ const storedSnapshot = z.object({
   possibleCreeps: z.number(),
   denies: z.number(),
   level: z.number(),
+  // v4, cumulative: souls from killing heroes (incl. their orbs), souls dropped on death
+  heroSouls: z.number().nullable().default(null),
+  soulsLost: z.number().nullable().default(null),
 })
 
 const storedSouls = z.object({
@@ -41,6 +61,20 @@ const storedSouls = z.object({
   bosses: z.number(),
   treasure: z.number(),
   lostToDeaths: z.number(),
+})
+
+// v5: end-of-match objective stats. Valve doesn't record Soul Urn deliveries,
+// Sinner's Sacrifice hits or Rift captures by name: their payouts land in
+// bountySouls (team bonus) / treasure souls, and their buffs in powerUps.
+const storedObjectives = z.object({
+  camps: z.number(),
+  breakableSouls: z.number(),
+  /** Objective bounties ("team bonus"): buildings, Unstable Rift, Soul Urn… */
+  bountySouls: z.number(),
+  comebackSouls: z.number().nullable(),
+  /** Unspent souls summed per minute; ÷ game minutes = average unspent. */
+  unspentSoulMinutes: z.number().nullable(),
+  powerUps: z.array(z.object({ type: z.string(), permanent: z.boolean(), count: z.number(), times: z.array(z.number()) })),
 })
 
 const storedPlayer = z.object({
@@ -73,10 +107,15 @@ const storedPlayer = z.object({
   deathDetails: z.array(storedDeath).default([]),
   snapshots: z.array(storedSnapshot).default([]),
   souls: storedSouls.nullable().default(null),
+  // v3
+  path: storedPath.nullable().default(null),
+  // v5
+  objectives: storedObjectives.nullable().default(null),
 })
 
 export const matchDetailSchema = z.object({
-  v: z.number().int().min(1).max(MATCH_DETAIL_VERSION),
+  // No max: a row from a newer app version stays readable (unknown fields are dropped).
+  v: z.number().int().min(1),
   matchId: z.number(),
   startTime: z.number(),
   durationS: z.number(),
@@ -89,12 +128,16 @@ export const matchDetailSchema = z.object({
   // v2
   objectives: z.array(z.object({ team: z.number(), id: z.number(), t: z.number() })).default([]), // team = owner; destroyed ones only
   midBoss: z.array(z.object({ teamClaimed: z.number(), t: z.number() })).default([]),
+  // v3
+  pathStepS: z.number().nullable().default(null),
 })
 
 export type MatchDetailData = z.infer<typeof matchDetailSchema>
 export type MatchDetailPlayer = z.infer<typeof storedPlayer>
 export type MatchDeath = z.infer<typeof storedDeath>
 export type MatchSnapshot = z.infer<typeof storedSnapshot>
+export type MatchPath = z.infer<typeof storedPath>
+export type MatchObjectives = z.infer<typeof storedObjectives>
 
 export const matchIdInput = z.object({
   matchId: z.coerce.number().int().positive(),

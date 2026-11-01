@@ -65,6 +65,27 @@ message CMsgMatchMetaData {
 
 // Enums (team, game_mode, …) are declared uint32: same wire format, and we
 // only want the numbers.
+// Per-player position samples (one per interval_s), quantized to
+// 0..x_resolution between that player's own x_min..x_max (same for y).
+message CMsgMatchPlayerPathsData {
+  message Path {
+    optional uint32 player_slot = 1;
+    optional float x_min = 2;
+    optional float y_min = 3;
+    optional float x_max = 4;
+    optional float y_max = 5;
+    repeated uint32 x_pos = 6 [packed = true];
+    repeated uint32 y_pos = 7 [packed = true];
+    repeated uint32 health = 9 [packed = true];
+    repeated uint32 combat_type = 10 [packed = true];   // ECombatType: 0 out, 1 hero, 2 enemy NPC, 3 neutral
+  }
+  optional uint32 version = 1;
+  optional float interval_s = 2;
+  optional uint32 x_resolution = 3;
+  optional uint32 y_resolution = 4;
+  repeated Path paths = 5;
+}
+
 message CMsgMatchMetaDataContents {
   message Position {
     optional float x = 1;
@@ -75,6 +96,7 @@ message CMsgMatchMetaDataContents {
     optional uint32 game_time_s = 1;
     optional uint32 killer_player_slot = 9;
     optional Position death_pos = 10;
+    optional Position killer_pos = 11;
     optional uint32 death_duration_s = 12;
   }
   message Items {
@@ -112,8 +134,34 @@ message CMsgMatchMetaDataContents {
     optional uint32 shots_missed = 33;
     optional uint32 hero_bullets_hit = 36;
     optional uint32 hero_bullets_hit_crit = 37;
+    repeated GoldSource gold_sources = 40;
+    repeated CustomUserStat custom_user_stats = 41;
     optional uint32 damage_mitigated = 42;
     optional uint32 level = 43;
+  }
+  // EGoldSource: 1 players, 2 lane creeps, 3 neutrals, 4 bosses, 5 treasure, 6 assists,
+  // 7 denies, 8 team bonus (objective bounties), 9–11, 13 item/ability, 12 breakables.
+  message GoldSource {
+    optional uint32 source = 1;
+    optional uint32 kills = 2;
+    optional uint32 damage = 3;
+    optional uint32 gold = 4;
+    optional uint32 gold_orbs = 5;
+  }
+  // Value of a stat named in MatchInfo.custom_user_stats (by id).
+  message CustomUserStat {
+    optional uint32 value = 2;
+    optional uint32 id = 3;
+  }
+  message CustomUserStatInfo {
+    optional string name = 1;
+    optional uint32 id = 2;
+  }
+  message PowerUpBuff {
+    optional string type = 1;              // e.g. "hp_permanent_pickup_lv3", "movement_powerup_pickup"
+    optional uint32 value = 2;
+    optional bool is_permanent = 3;
+    repeated uint32 pickup_times_s = 4 [packed = true];
   }
   message Players {
     optional uint32 account_id = 1;
@@ -133,6 +181,7 @@ message CMsgMatchMetaDataContents {
     optional uint32 level = 18;
     optional uint32 abandon_match_time_s = 23;
     optional uint32 mvp_rank = 28;
+    repeated PowerUpBuff power_up_buffs = 30;
   }
   message Objective {
     optional uint32 destroyed_time_s = 2;
@@ -155,6 +204,8 @@ message CMsgMatchMetaDataContents {
     optional uint32 game_mode = 9;
     optional uint32 match_mode = 10;
     repeated Objective objectives = 11;
+    optional CMsgMatchPlayerPathsData match_paths = 12;
+    repeated CustomUserStatInfo custom_user_stats = 15;
     repeated MidBoss mid_boss = 19;
     optional uint32 average_badge_team0 = 23;
     optional uint32 average_badge_team1 = 24;

@@ -5,6 +5,8 @@ import { CHANNELS, type DesktopApi } from '../../shared/api'
 import { getMatchDetail } from '../services/match-detail'
 import { getFriends, getMates, searchPlayers } from '../services/player-lookup'
 import { buildPlayerOverview } from '../services/player-overview'
+import { buildPlayerAnalysis } from '../services/player-analysis'
+import { getHeroCoaching } from '../services/hero-coaching'
 import { getSelfAccountId, markViewed } from '../services/player-repo'
 import { ensureCloudSession, getCloudSignInState, signOut } from '../cloud/auth'
 import { CLOUD_URL, getCloudAccount } from '../cloud/client'
@@ -12,7 +14,9 @@ import { pendingPush } from '../cloud/sync'
 import { getState } from '../sync/state'
 import { disconnectSteam, importCliLogin } from '../steam/account'
 import { cancelLogin, startPasswordLogin, startQrLogin, submitGuardCode } from '../steam/login'
-import { fetchMatchNow, getSyncStatus, publishSyncStatus, runNow } from '../sync/scheduler'
+import { backfillDetailsNow, fetchMatchNow, getSyncStatus, publishSyncStatus, runNow } from '../sync/scheduler'
+import { upgradeMatchDetailFree } from '../sync/engine'
+import { cloudDetailsSource } from '../cloud/sync'
 
 const id = z.number().int().positive()
 
@@ -33,6 +37,8 @@ const handlers: Handlers = {
       }
     },
     friends: () => getFriends(),
+    analysis: (accountId) => buildPlayerAnalysis(id.parse(accountId)),
+    heroCoaching: (accountId) => getHeroCoaching(id.parse(accountId)),
     async search(q) {
       const parsed = parsePlayerInput(z.string().max(200).parse(q))
       if (!parsed) return { kind: 'invalid' }
@@ -47,6 +53,7 @@ const handlers: Handlers = {
   },
   matches: {
     detail: (matchId) => getMatchDetail(id.parse(matchId)),
+    upgrade: (matchId) => upgradeMatchDetailFree(id.parse(matchId), cloudDetailsSource()).catch(() => false),
   },
   steam: {
     loginQr: () => startQrLogin(),
@@ -85,6 +92,7 @@ const handlers: Handlers = {
   sync: {
     status: () => getSyncStatus(),
     run: async (options) => runNow({ accountId: options?.accountId ? id.parse(options.accountId) : undefined, full: options?.full === true }),
+    details: async (accountId) => backfillDetailsNow(id.parse(accountId)),
     match: (matchId) => fetchMatchNow(id.parse(matchId)),
   },
 }

@@ -1,16 +1,22 @@
 import { createFileRoute, Link, notFound, useNavigate, useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import { Card, LocalDateTime, RankBadge, TabBar, tabClass } from '~/components/ui'
 import { useSyncStatus } from '~/domain/sync/hooks'
 import { AnalysisSummary, KeyMoments, LanesCard, PlayerReports } from '~/domain/matches/components/MatchAnalysis'
+import { AreaReview, DeathMapCard, FightReviewCard, FocusCard, ThreatsCard, VerdictCard } from '~/domain/matches/components/MatchReview'
 import { NetWorthChart } from '~/domain/matches/components/NetWorthChart'
 import { Scoreboard } from '~/domain/matches/components/Scoreboard'
 import { analyzeMatch, hasAnalysisData } from '@deadlock/core/domain/matches/services/analysis'
+import { coachReview } from '@deadlock/core/domain/matches/services/coach'
+import { MAJOR_THREAT } from '@deadlock/core/domain/matches/services/match-facts'
+import { hasObjectiveData, objectivesReport } from '@deadlock/core/domain/matches/services/objectives'
+import { ObjectivesView } from '~/domain/matches/components/ObjectivesView'
+import { MATCH_DETAIL_VERSION } from '@deadlock/core/domain/matches/validators/match-detail'
 import { formatDuration, modeLabel, teamName } from '@deadlock/core/lib/format'
 
 const matchIdParam = z.coerce.number().int().positive()
-const TABS = ['overview', 'scoreboard', 'players', 'timeline'] as const
+const TABS = ['overview', 'scoreboard', 'fights', 'objectives', 'counters', 'players', 'timeline'] as const
 type Tab = (typeof TABS)[number]
 
 export const Route = createFileRoute('/matches/$matchId')({
@@ -25,7 +31,7 @@ export const Route = createFileRoute('/matches/$matchId')({
   validateSearch: z.object({
     // The player whose page you came from (breadcrumb; analysis side if you weren't in the match).
     player: z.coerce.number().int().positive().optional(),
-    tab: z.enum(TABS).optional(),
+    tab: z.enum(TABS).optional().catch(undefined), // unknown (e.g. the old 'coach' tab) → Overview
     // Scoreboard row whose build is open; 0 = none.
     sel: z.coerce.number().int().nonnegative().optional(),
   }),
@@ -80,14 +86,19 @@ function MatchPage() {
 
   // Cheap (12 players), so no memo — and hooks can't follow the early return above.
   const analysis = hasAnalysisData(detail) ? analyzeMatch(detail, perspectiveTeam, (id) => heroes[id]?.name ?? `Hero ${id}`, items) : null
+  const heroName = (id: number) => heroes[id]?.name ?? `Hero ${id}`
+  const review = analysis ? coachReview(detail, analysis, heroName, viewer ? { accountId: viewer.accountId, isSelf: viewer.accountId === selfAccountId } : null) : null
   const reports = new Map((analysis?.players ?? []).map((r) => [r.accountId, r]))
   const tabs: { id: Tab; label: string; needsAnalysis?: boolean }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'scoreboard', label: 'Scoreboard' },
+    { id: 'fights', label: 'Fights', needsAnalysis: true },
+    { id: 'objectives', label: 'Objectives', needsAnalysis: true },
+    { id: 'counters', label: 'Counters', needsAnalysis: true },
     { id: 'players', label: 'Players', needsAnalysis: true },
     { id: 'timeline', label: 'Timeline', needsAnalysis: true },
   ]
-  const active: Tab = !analysis && (tab === 'players' || tab === 'timeline') ? 'overview' : tab
+  const active: Tab = !analysis && tabs.find((t) => t.id === tab)?.needsAnalysis ? 'overview' : tab
 
   return (
     <div className="grid gap-6">
@@ -149,6 +160,12 @@ function MatchPage() {
 
       {active === 'overview' && (
         <div className="grid gap-4">
+          {review && (
+            <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+              <VerdictCard review={review} won={won} />
+              <FocusCard review={review} />
+            </div>
+          )}
           {analysis ? (
             <AnalysisSummary analysis={analysis} perspective={perspective} />
           ) : (
@@ -170,6 +187,29 @@ function MatchPage() {
         </div>
       )}
 
+      {detail.v < MATCH_DETAIL_VERSION && <UpgradeBanner key={matchId} matchId={matchId} onDone={() => void router.invalidate()} />}
+
+      {active === 'fights' && review && (
+        <div className="grid gap-4">
+          <FightReviewCard fights={review.fights} heroes={heroes} hasPositions={review.hasPositions} />
+          {review.deathMap && <DeathMapCard map={review.deathMap} heroes={heroes} highlight={viewer?.accountId ?? null} />}
+        </div>
+      )}
+
+      {active === 'objectives' &&
+        analysis &&
+        (hasObjectiveData(detail) ? (
+          <ObjectivesView report={objectivesReport(detail, perspectiveTeam)} team={perspectiveTeam} heroes={heroes} highlight={viewer?.accountId ?? null} />
+        ) : (
+          <Card title="Objectives">
+            <p className="p-4 text-sm text-ink-2">This match was saved before objective stats were recorded. It updates automatically when the cloud or community cache has the new version.</p>
+          </Card>
+        ))}
+
+      {active === 'counters' && analysis && (
+        <ThreatsCard counters={analysis.counters} heroes={heroes} items={items} highlight={viewer?.accountId ?? null} majorThreat={MAJOR_THREAT} />
+      )}
+
       {active === 'scoreboard' && (
         <div className="grid gap-2">
           <Scoreboard detail={detail} heroes={heroes} items={items} avgRank={avgRank} selected={selected} onSelect={toggle} reports={reports} />
@@ -177,7 +217,18 @@ function MatchPage() {
         </div>
       )}
 
-      {active === 'players' && analysis && <PlayerReports analysis={analysis} heroes={heroes} highlight={viewer?.accountId ?? null} />}
+      {active === 'players' && analysis && (
+        <div className="grid gap-4">
+          {viewer && (
+            <AreaReview
+              analysis={analysis}
+              accountId={viewer.accountId}
+              title={viewer.accountId === selfAccountId ? 'Your game, by area' : `${viewer.name}'s game, by area`}
+            />
+          )}
+          <PlayerReports analysis={analysis} heroes={heroes} highlight={viewer?.accountId ?? null} />
+        </div>
+      )}
 
       {active === 'timeline' && analysis && (
         <div className="grid gap-4">
@@ -191,34 +242,70 @@ function MatchPage() {
   )
 }
 
+/**
+ * Matches saved before positions were stored: try the free sources (cloud,
+ * community cache) on open; only if both miss, offer the Steam download.
+ */
+function UpgradeBanner({ matchId, onDone }: { matchId: number; onDone: () => void }) {
+  const [state, setState] = useState<'checking' | 'failed'>('checking')
+  useEffect(() => {
+    let alive = true
+    void window.api.matches.upgrade(matchId).then((ok) => {
+      if (!alive) return
+      if (ok) onDone()
+      else setState('failed')
+    })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per match
+  }, [matchId])
+  return (
+    <div className="card grid gap-3 p-4 text-sm">
+      {state === 'checking' ? (
+        <p className="text-ink-2">Updating this match with player positions…</p>
+      ) : (
+        <>
+          <p className="text-ink-2">
+            This match was saved before player positions were recorded, so rotation, fight presence and the death map aren't available. Neither the cloud nor the
+            community cache has the new version yet.
+          </p>
+          <DownloadButton matchId={matchId} onDone={onDone} />
+        </>
+      )}
+    </div>
+  )
+}
+
 function DownloadButton({ matchId, onDone }: { matchId: number; onDone: () => void }) {
   const [state, setState] = useState<{ kind: 'idle' | 'busy' } | { kind: 'error'; message: string }>({ kind: 'idle' })
   const status = useSyncStatus()
   // getSyncStatus() clears expired pauses, and useSyncStatus refreshes at the
   // deadline, so a non-null backoff means Steam is paused right now.
-  const pausedUntil = status?.backoffUntil ? new Date(status.backoffUntil) : null
+  const pausedUntil = status?.detailsBackoffUntil ? new Date(status.detailsBackoffUntil) : null
   const paused = pausedUntil !== null
   return (
     <div className="grid gap-2">
       <button
         type="button"
-        disabled={state.kind === 'busy' || paused}
+        disabled={state.kind === 'busy'}
         onClick={() => {
           setState({ kind: 'busy' })
           void window.api.sync.match(matchId).then((r) => (r.ok ? onDone() : setState({ kind: 'error', message: r.message })))
         }}
         className="h-8 rounded-md bg-accent px-3 text-sm font-medium text-white hover:bg-accent-strong disabled:opacity-60"
       >
-        {state.kind === 'busy' ? 'Downloading…' : paused ? 'Steam rate limit hit' : 'Download from Steam'}
+        {state.kind === 'busy' ? 'Downloading…' : 'Download match'}
       </button>
       {state.kind === 'error' ? (
         <p className="text-xs text-loss">{state.message}</p>
       ) : paused && pausedUntil ? (
         <p className="text-xs text-ink-2">
-          Steam rate limit hit. Try again after {pausedUntil.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. Matches already saved or in the cloud still open.
+          Steam is paused until {pausedUntil.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. Cached matches still download now; anything else
+          waits.
         </p>
       ) : (
-        <p className="text-xs text-muted">Uses one Steam request. Steam limits these; avoid repeated downloads.</p>
+        <p className="text-xs text-muted">Uses one Steam request only if the match isn't already cached. Steam limits these, so avoid repeat downloads.</p>
       )}
     </div>
   )

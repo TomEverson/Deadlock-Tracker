@@ -1,4 +1,6 @@
 import type { MatchDetailResult } from '@deadlock/core/domain/matches/types'
+import type { OverallAnalysis } from '@deadlock/core/domain/players/services/overall-analysis'
+import type { HeroCoachingResult } from '@deadlock/core/domain/players/services/hero-coaching'
 import type { FriendList, Mate, PlayerOverview, PlayerSearchResult } from '@deadlock/core/domain/players/types'
 import type { MeResult } from '@deadlock/core/sync/protocol'
 
@@ -52,6 +54,10 @@ export interface SyncStatus {
   messageTone: 'info' | 'warn' | 'error' | null
   last: SyncRunSummary | null
   backoffUntil: string | null
+  /** Pause on match-history requests only (a detail pause doesn't block a sync). */
+  historyBackoffUntil: string | null
+  /** Pause on match-detail requests only. */
+  detailsBackoffUntil: string | null
   budgets: { history: { used: number }; details: { used: number } }
   steam: SteamAccount | null
   hasCliLogin: boolean
@@ -75,9 +81,15 @@ export interface DesktopApi {
     friends(): Promise<FriendList>
     search(q: string): Promise<SearchResult>
     selfAccountId(): Promise<number | null>
+    /** Cross-match analysis: habits, win conditions, trends. */
+    analysis(accountId: number): Promise<OverallAnalysis>
+    /** Per-hero coaching vs the same hero at the player's rank (community benchmarks; network). */
+    heroCoaching(accountId: number): Promise<HeroCoachingResult>
   }
   matches: {
     detail(matchId: number): Promise<MatchDetailResult>
+    /** Re-fetch a match saved by an older version from free sources only (cloud, community cache). True when it's now current. */
+    upgrade(matchId: number): Promise<boolean>
   }
   steam: {
     loginQr(): Promise<void>
@@ -96,6 +108,8 @@ export interface DesktopApi {
     status(): Promise<SyncStatus>
     /** Sync now: everyone, or one account. Resolves when the run starts. */
     run(options?: { accountId?: number; full?: boolean }): Promise<void>
+    /** Start a free details backfill for one player's previous games (cloud + community cache, no Steam). */
+    details(accountId: number): Promise<void>
     /** Get one match's details (cloud first, then Steam). */
     match(matchId: number): Promise<{ ok: true } | { ok: false; message: string }>
   }
@@ -114,9 +128,9 @@ export const EVENTS = ['sync:status', 'steam:login', 'data:changed'] as const sa
 
 /** Channel names, derived from the contract: "players:overview", … */
 export const CHANNELS = {
-  players: ['overview', 'mates', 'friends', 'search', 'selfAccountId'],
-  matches: ['detail'],
+  players: ['overview', 'mates', 'friends', 'search', 'selfAccountId', 'analysis', 'heroCoaching'],
+  matches: ['detail', 'upgrade'],
   steam: ['loginQr', 'loginPassword', 'submitCode', 'cancelLogin', 'disconnect', 'importCliLogin'],
   cloud: ['status', 'signIn'],
-  sync: ['status', 'run', 'match'],
+  sync: ['status', 'run', 'details', 'match'],
 } as const satisfies { [K in Exclude<keyof DesktopApi, 'platform' | 'on'>]: readonly (keyof DesktopApi[K])[] }

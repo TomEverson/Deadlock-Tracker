@@ -35,7 +35,8 @@ when several friends play the same match each of them pays for it.
 - No public website. The Cloudflare Worker is an API only.
 - No mobile app.
 - No real-time collaboration (sync on a schedule and on demand is enough).
-- Not replacing deadlock-api for player search, teammate stats, rank badges, or hero/item art (for now).
+- Not replacing deadlock-api for player search, teammate stats, rank badges, hero/item art, or
+  its cached match metadata (we read the cache, we don't depend on it).
 - Auto-update and code signing are out of scope for the first release.
 
 ## Proposed Solution
@@ -101,6 +102,16 @@ button, or right after connecting Steam)
 
 **Opening a page** reads local SQLite. If a friend's profile has nothing locally, the app
 pulls it from the cloud first (when online).
+
+**Match details (on demand)**, cheapest source first:
+
+1. Local `match_detail` (already current → no request at all).
+2. The cloud, so a match another install opened is free here too.
+3. deadlock-api's cached copy (`/v1/matches/{id}/metadata/raw?disable_steam=true`). It is the
+   same file Valve publishes, decoded by the same code, and costs no Steam request. A 404 means
+   "not cached" and falls through; `disable_steam` guarantees the community API never spends
+   its own Steam quota on our behalf.
+4. The Game Coordinator (salts → `replay{cluster}.valve.net`), only for matches nobody has.
 
 ## Trust Model and Match Verification
 

@@ -1,4 +1,5 @@
 import { db as getDb } from '../db'
+import { HERO_COUNTERS } from '@deadlock/core/domain/matches/data/hero-counters'
 import { cloudDetailsSource } from '../cloud/sync'
 import { fetchSteamProfiles } from './deadlock-api'
 import { getSelfAccountId } from './player-repo'
@@ -92,8 +93,10 @@ export async function getMatchDetail(matchId: number): Promise<MatchDetailResult
     getRankInfo(detail.avgBadge[1]),
   ])
 
-  // Only ship the heroes/items this match actually uses. Item ids that
-  // aren't shop upgrades (ability unlocks etc.) are dropped here.
+  // Only ship the heroes/items this match actually uses, plus every counter
+  // item (hero counter lists, anti-heal/resist/shred tags) so the Counters
+  // tab can show items nobody bought and suggest the cheapest options.
+  // Item ids that aren't shop upgrades (ability unlocks etc.) are dropped here.
   const heroes: Record<number, HeroInfo> = {}
   const items: Record<number, ItemInfo> = {}
   for (const p of detail.players) {
@@ -102,6 +105,11 @@ export async function getMatchDetail(matchId: number): Promise<MatchDetailResult
       const info = itemMap.get(i.itemId)
       if (info) items[i.itemId] = info
     }
+  }
+  const counterNames = new Set(Object.values(HERO_COUNTERS).flat())
+  for (const info of itemMap.values()) {
+    if (items[info.id]) continue
+    if (info.tags.length > 0 || (counterNames.has(info.name) && info.icon)) items[info.id] = info
   }
 
   return { kind: 'ok', detail, heroes, items, avgRank: [rank0, rank1], selfAccountId }

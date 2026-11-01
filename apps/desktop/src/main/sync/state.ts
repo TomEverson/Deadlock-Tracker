@@ -58,22 +58,75 @@ export async function recordRequest(name: BudgetName): Promise<void> {
   await setState(BUDGETS[name].key, log)
 }
 
-// After Steam says RateLimited, leave it alone for a while (deadlock-api's
-// bots rest ~2h too).
-const BACKOFF_KEY = 'gc.backoffUntil'
-export const RATE_LIMIT_BACKOFF_MS = 2 * 60 * 60 * 1000
-// Detail requests recover faster than history pages; Steam's message says
-// roughly 30 minutes. Never shorten a longer history backoff that's active.
-export const DETAIL_RATE_LIMIT_BACKOFF_MS = 30 * 60 * 1000
+// ------------------------------------------------------------ rate-limit backoff
 
-export async function backoffUntil(): Promise<number | null> {
-  const until = await getState<number>(BACKOFF_KEY)
-  return until && until > Date.now() ? until : null
+/**
+ * Steam's GC limit is per Steam account and comes with no reset time: the only
+ * signal is a `RateLimited` result. Coming back too early earns another
+ * refusal, so each kind of request keeps its own window (a short detail pause
+ * must not freeze a whole sync) and the window doubles on every fresh refusal.
+ * One successful request clears that window and its strikes again.
+ */
+interface BackoffState {
+  until: number
+  /** Consecutive refusals, for the doubling. */
+  strikes: number
+  /** When the last refusal happened. */
+  at: number
 }
 
-export async function startBackoff(durationMs = RATE_LIMIT_BACKOFF_MS): Promise<number> {
-  const current = await backoffUntil()
-  const until = Math.max(current ?? 0, Date.now() + durationMs)
-  await setState(BACKOFF_KEY, until)
+export const BACKOFFS = {
+  // deadlock-api's bots rest ~2h after a refusal.
+  history: { key: 'gc.backoff.history', baseMs: 2 * 60 * 60 * 1000, maxMs: 12 * 60 * 60 * 1000 },
+  // Detail requests recover faster; Steam's message says roughly 30 minutes.
+  details: { key: 'gc.backoff.details', baseMs: 30 * 60 * 1000, maxMs: 4 * 60 * 60 * 1000 },
+} as const
+export type BackoffName = keyof typeof BACKOFFS
+
+// Older installs kept one shared window in this key. Keep honouring it once so
+// an upgrade doesn't retry straight into a limit that is still active.
+const LEGACY_BACKOFF_KEY = 'gc.backoffUntil'
+// Strikes are forgotten after a day, so a limit next week starts at the base window again.
+const STRIKE_MEMORY_MS = 24 * 60 * 60 * 1000
+
+async function readBackoff(name: BackoffName): Promise<BackoffState | null> {
+  const state = await getState<BackoffState>(BACKOFFS[name].key)
+  if (state && typeof state.until === 'number') return state
+  // An older install's shared window still applies to both kinds. It is only
+  // deleted once a per-kind window replaces it, so a read here has no race.
+  const legacy = await getState<number>(LEGACY_BACKOFF_KEY)
+  if (typeof legacy !== 'number') return null
+  // The old key only stored "until"; approximate when the refusal happened so a
+  // stale window doesn't count as a fresh strike.
+  return { until: legacy, strikes: 1, at: legacy - BACKOFFS[name].baseMs }
+}
+
+/** When this kind of request may run again, or null if it isn't paused. */
+export async function backoffFor(name: BackoffName): Promise<number | null> {
+  const state = await readBackoff(name)
+  return state && state.until > Date.now() ? state.until : null
+}
+
+/** The latest pause across all kinds, for the "Steam is paused" banner. */
+export async function backoffUntil(): Promise<number | null> {
+  const active = (await Promise.all((Object.keys(BACKOFFS) as BackoffName[]).map(backoffFor))).filter((t): t is number => t !== null)
+  return active.length > 0 ? Math.max(...active) : null
+}
+
+/** Record a RateLimited answer and push the window out. Returns the new resume time. */
+export async function startBackoff(name: BackoffName, durationMs?: number): Promise<number> {
+  const now = Date.now()
+  const prev = await readBackoff(name)
+  const strikes = prev && now - prev.at < STRIKE_MEMORY_MS ? prev.strikes + 1 : 1
+  const { baseMs, maxMs } = BACKOFFS[name]
+  const wait = durationMs ?? Math.min(baseMs * 2 ** (strikes - 1), maxMs)
+  const until = Math.max(prev?.until ?? 0, now + wait)
+  await setState(BACKOFFS[name].key, { until, strikes, at: now } satisfies BackoffState)
+  await deleteState(LEGACY_BACKOFF_KEY)
   return until
+}
+
+/** A request got through: forget the pause and the strikes behind it. */
+export async function clearBackoff(name: BackoffName): Promise<void> {
+  await deleteState(BACKOFFS[name].key)
 }

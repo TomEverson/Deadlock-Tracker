@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Card, HeroIcon, Segmented } from '~/components/ui'
 import type { HeroInfo } from '@deadlock/core/domain/assets/types'
 import { formatDuration, formatSouls, teamName } from '@deadlock/core/lib/format'
+import { laneName } from '@deadlock/core/domain/matches/services/match-facts'
 import type { Finding, LaneReport, MatchAnalysis, Moment, PlayerReport, Tone } from '@deadlock/core/domain/matches/services/analysis'
 
 const TONE_TEXT: Record<Tone, string> = { good: 'text-win', bad: 'text-loss', info: 'text-ink-2' }
@@ -102,6 +103,7 @@ export function LanesCard({ lanes, heroes }: { lanes: LaneReport[]; heroes: Reco
             const tone: Tone = l.soulDiff >= 500 ? 'good' : l.soulDiff <= -500 ? 'bad' : 'info'
             return (
               <li key={l.lane} className="flex items-center gap-3 px-4 py-3">
+                <span className="w-24 shrink-0 text-xs text-ink-2">{laneName(l.lane)}</span>
                 <div className="flex -space-x-1">
                   {l.ours.map((p) => (
                     <HeroIcon key={p.accountId} hero={heroOf(heroes, p.heroId)} size={28} />

@@ -17,7 +17,7 @@ function createWindow(): void {
     title: 'Deadlock Tracker',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0f0f11' : '#ffffff',
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
-    trafficLightPosition: { x: 14, y: 14 },
+    trafficLightPosition: { x: 14, y: 13 }, // vertically centered in the 40px TitleBar
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),

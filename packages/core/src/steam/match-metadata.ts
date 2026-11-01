@@ -24,6 +24,20 @@ function decompress(body: Buffer): Buffer {
   throw new GcError('gc_error', `Unknown metadata compression (first bytes ${body.subarray(0, 4).toString('hex')})`)
 }
 
+/** Decode a metadata file body (Zstandard or bzip2) into the validated match info. */
+export function decodeMatchMetadata(raw: Buffer, matchId: number): MatchMetadata {
+  const body = decompress(raw)
+  const outer = MatchMetaData.decode(body)
+  const details = MatchMetaData.toObject(outer, { bytes: Buffer }).match_details
+  if (!Buffer.isBuffer(details) || details.length === 0) throw new GcError('gc_error', `Match ${matchId} metadata file has no match details`)
+
+  const contents = decode(MatchMetaDataContents, details)
+  const info = typeof contents === 'object' && contents !== null && 'match_info' in contents ? contents.match_info : undefined
+  const parsed = matchMetadataSchema.safeParse(info)
+  if (!parsed.success) throw new GcError('gc_error', `Unexpected metadata for match ${matchId}: ${parsed.error.message.slice(0, 200)}`)
+  return parsed.data
+}
+
 /** Download a match's metadata file from Valve's replay servers and decode it. */
 export async function downloadMatchMetadata(salts: MatchSalts): Promise<MatchMetadata> {
   const url = metadataUrl(salts)
@@ -35,14 +49,5 @@ export async function downloadMatchMetadata(salts: MatchSalts): Promise<MatchMet
   }
   if (!res.ok) throw new GcError('gc_error', `Valve's replay server returned ${res.status} for match ${salts.matchId}`)
 
-  const raw = decompress(Buffer.from(await res.arrayBuffer()))
-  const outer = MatchMetaData.decode(raw)
-  const details = MatchMetaData.toObject(outer, { bytes: Buffer }).match_details
-  if (!Buffer.isBuffer(details) || details.length === 0) throw new GcError('gc_error', `Match ${salts.matchId} metadata file has no match details`)
-
-  const contents = decode(MatchMetaDataContents, details)
-  const info = typeof contents === 'object' && contents !== null && 'match_info' in contents ? contents.match_info : undefined
-  const parsed = matchMetadataSchema.safeParse(info)
-  if (!parsed.success) throw new GcError('gc_error', `Unexpected metadata for match ${salts.matchId}: ${parsed.error.message.slice(0, 200)}`)
-  return parsed.data
+  return decodeMatchMetadata(Buffer.from(await res.arrayBuffer()), salts.matchId)
 }
