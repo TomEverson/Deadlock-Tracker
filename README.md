@@ -50,7 +50,7 @@ Live at `https://deadlock-cloud.studycafe-125.workers.dev`.
 cd apps/cloud
 pnpm dev                    # local Worker on :8787 (point the app at it with DEADLOCK_CLOUD_URL)
 pnpm db:migrate:remote      # apply migrations to the real D1
-pnpm deploy
+pnpm run deploy
 ```
 
 Access is open: any Steam account that signs in can read and write the
