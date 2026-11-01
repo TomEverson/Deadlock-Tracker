@@ -69,7 +69,7 @@ function SettingsPage() {
                 {status.message && <p className={`mt-1 text-xs ${status.messageTone === 'error' ? 'text-loss' : 'text-muted'}`}>{status.message}</p>}
                 {status.backoffUntil && !status.message && (
                   <p className="mt-1 text-xs text-muted">
-                    Steam requests paused until {new Date(status.backoffUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
+                    Steam rate limit hit. Requests resume at {new Date(status.backoffUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
                   </p>
                 )}
               </div>

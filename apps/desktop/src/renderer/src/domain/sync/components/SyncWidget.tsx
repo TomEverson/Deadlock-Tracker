@@ -35,7 +35,7 @@ export function SyncWidget() {
         ) : status.message ? (
           <span className={status.messageTone === 'error' ? 'text-loss' : status.messageTone === 'warn' ? 'text-ink-2' : ''}>{status.message}</span>
         ) : paused ? (
-          <span className="text-ink-2">Steam paused until {new Date(status.backoffUntil!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+          <span className="text-ink-2">Steam rate limit hit · resumes at {new Date(status.backoffUntil!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
         ) : status.last ? (
           <>
             Synced <TimeAgo at={status.last.at} />
