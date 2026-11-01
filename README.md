@@ -26,19 +26,30 @@ First launch: **Settings → Steam** (QR code or password + Steam Guard) and
 sidebar's **Sync now** (the friend list and names refresh on app launch
 without reading any matches).
 
-## Build the macOS app
+## Build the desktop apps
 
 ```bash
-pnpm --filter @deadlock/desktop dist:mac
+pnpm --filter @deadlock/desktop dist:mac    # .dmg + .zip
+pnpm --filter @deadlock/desktop dist:win    # NSIS .exe + .zip
+pnpm --filter @deadlock/desktop dist:linux  # .AppImage + .tar.gz
 ```
 
-The `.app`, `.dmg` and `.zip` are written to `apps/desktop/release/`. The
-release build is unsigned and Apple Silicon (arm64) only. On first launch,
+Artifacts are written to `apps/desktop/release/`. Build each target on its
+native OS, or use the **Release** GitHub Actions workflow, which builds macOS
+(arm64), Windows (x64), and Linux (x64) and attaches them to the release.
+
+The macOS release is ad-hoc signed and not notarized. On first launch,
 right-click the app and choose **Open**, or clear the quarantine flag:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Deadlock Tracker.app"
 ```
+
+Notarization requires an Apple Developer account; see
+[`docs/signing-and-notarization.md`](docs/signing-and-notarization.md).
+Windows builds are unsigned, so SmartScreen may warn. Linux builds are
+unsigned; the AppImage runs directly on CachyOS, and the `.tar.gz` is a
+portable fallback.
 
 Published builds: <https://github.com/TomEverson/Deadlock-Tracker/releases>.
 

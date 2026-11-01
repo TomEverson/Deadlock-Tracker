@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to upload to
+        required: true
+        default: v0.1.0
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure the release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Deadlock Tracker ${TAG#v}" \
+              --notes "Desktop builds for macOS, Windows, and Linux."
+          fi
+
+  build:
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: mac
+            arch: arm64
+            label: macOS-arm64
+          - os: windows-latest
+            platform: win
+            arch: x64
+            label: Windows-x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            label: Linux-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build bundles
+        run: pnpm --filter @deadlock/desktop build
+
+      - name: Build ${{ matrix.label }}
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm --filter @deadlock/desktop exec electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
+
+      - name: Upload to the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          shopt -s nullglob
+          files=(apps/desktop/release/*.dmg apps/desktop/release/*.zip apps/desktop/release/*.exe apps/desktop/release/*.AppImage apps/desktop/release/*.tar.gz)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release artifacts found" >&2
+            exit 1
+          fi
+          gh release upload "$TAG" "${files[@]}" --clobber

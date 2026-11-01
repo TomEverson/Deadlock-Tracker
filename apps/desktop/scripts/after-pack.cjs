@@ -9,6 +9,12 @@ module.exports = async function afterPack(context) {
     return
   }
 
+  // A real Developer ID build is signed later by electron-builder. This hook
+  // only supplies the ad-hoc signature needed by local/unsigned builds.
+  if (process.env.CSC_LINK || process.env.CSC_NAME) {
+    return
+  }
+
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
   execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' })
 }
