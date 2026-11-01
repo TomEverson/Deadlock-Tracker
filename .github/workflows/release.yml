@@ -93,4 +93,11 @@ jobs:
             echo "No release artifacts found" >&2
             exit 1
           fi
-          gh release upload "$TAG" "${files[@]}" --clobber
+          for attempt in 1 2 3; do
+            if gh release upload "$TAG" "${files[@]}" --clobber; then
+              exit 0
+            fi
+            echo "Upload failed (attempt $attempt); retrying in 10s..." >&2
+            sleep 10
+          done
+          exit 1
