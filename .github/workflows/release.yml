@@ -64,14 +64,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build bundles
+        run: pnpm --filter @deadlock/desktop build
+
       - name: Typecheck
         run: pnpm -r typecheck
 
       - name: Lint
         run: pnpm lint
-
-      - name: Build bundles
-        run: pnpm --filter @deadlock/desktop build
 
       - name: Build ${{ matrix.label }}
         shell: bash
