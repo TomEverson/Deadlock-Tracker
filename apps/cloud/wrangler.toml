@@ -1,0 +1,23 @@
+name = "deadlock-cloud"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = true
+
+[vars]
+# Your SteamID3 (account id). Becomes admin on first sign-in.
+ADMIN_ACCOUNT_ID = "1810716873"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "deadlock-cloud"
+# Created with `wrangler d1 create deadlock-cloud` (APAC).
+database_id = "8fb3cfb6-e051-402a-8879-8ac28988d4a9"
+migrations_dir = "migrations"
+
+# Secrets (wrangler secret put …; .dev.vars locally):
+#   BETTER_AUTH_SECRET   random 32+ byte string

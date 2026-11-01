@@ -1,0 +1,83 @@
+# ---------------------------------------------------------------- dependencies
+node_modules/
+.pnpm-store/
+
+# ----------------------------------------------------------------- build output
+dist/
+out/
+release/
+build/
+*.tsbuildinfo
+.vite/
+
+# ------------------------------------------------------------ secrets and env
+# Never commit environment files or local Cloudflare secrets.
+.env
+.env.*
+!.env.example
+!.env.sample
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+secrets/
+.npmrc
+.envrc
+
+# Private keys / certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# --------------------------------------------------------- Cloudflare / wrangler
+.wrangler/
+
+# ------------------------------------------------------------ generated sources
+.tanstack/
+**/routeTree.gen.ts
+
+# ------------------------------------------------------------ local databases
+# Local D1/Miniflare state lives under .wrangler/, but ignore stray DB files too.
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ------------------------------------------------------------------------- logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# -------------------------------------------------------------------- tests
+coverage/
+.nyc_output/
+
+# ------------------------------------------------------------------- packaging
+.electron-builder/
+*.dmg
+*.AppImage
+*.exe
+
+# ------------------------------------------------------------------------- OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+
+# -------------------------------------------------------------------- editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~

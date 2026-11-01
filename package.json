@@ -1,0 +1,18 @@
+{
+  "name": "deadlock-tracker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "desktop": "pnpm --filter @deadlock/desktop dev",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1"
+  }
+}

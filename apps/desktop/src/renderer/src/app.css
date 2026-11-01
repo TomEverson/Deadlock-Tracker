@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+/* Minimal, Linear-inspired: neutral greys, one indigo accent, Inter only,
+   13px base. Dark by default; light follows the OS (or data-theme). */
+@theme {
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Compact type scale (Tailwind's defaults are a size larger). */
+  --text-xs: 11px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14px;
+  --text-base--line-height: 22px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 32px;
+
+  --color-bg: #0f0f11;
+  --color-sidebar: #0b0b0d;
+  --color-surface: #141417;
+  --color-surface-2: #1b1b1f;
+  --color-line: rgb(255 255 255 / 0.07);
+  --color-line-strong: rgb(255 255 255 / 0.13);
+  --color-ink: #ececee;
+  --color-ink-2: #a0a0a8;
+  --color-muted: #6c6c76;
+
+  --color-accent: #7380e6;
+  --color-accent-strong: #8b96ee;
+  --color-accent-bg: rgb(115 128 230 / 0.14);
+
+  --color-win: #4cb782;
+  --color-win-bg: rgb(76 183 130 / 0.12);
+  --color-loss: #e5585c;
+  --color-loss-bg: rgb(229 88 92 / 0.12);
+
+  --color-team0: #d6a04a; /* Hidden King */
+  --color-team1: #5b8def; /* Archmother */
+
+  --color-slot-weapon: #d9913c;
+  --color-slot-vitality: #6fb35a;
+  --color-slot-spirit: #a477d9;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --color-bg: #ffffff;
+    --color-sidebar: #f7f7f8;
+    --color-surface: #ffffff;
+    --color-surface-2: #f2f2f4;
+    --color-line: rgb(0 0 0 / 0.08);
+    --color-line-strong: rgb(0 0 0 / 0.15);
+    --color-ink: #1b1b1f;
+    --color-ink-2: #5c5c66;
+    --color-muted: #8b8b95;
+    --color-accent: #5e6ad2;
+    --color-accent-strong: #4d58c0;
+    --color-accent-bg: rgb(94 106 210 / 0.1);
+    --color-win: #1f9d64;
+    --color-win-bg: rgb(31 157 100 / 0.1);
+    --color-loss: #d93d42;
+    --color-loss-bg: rgb(217 61 66 / 0.09);
+    --color-team0: #b07418;
+    --color-team1: #3b6fd8;
+  }
+}
+
+html {
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  html:not([data-theme="dark"]) {
+    color-scheme: light;
+  }
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bordered panel. */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+/* Small secondary heading: sentence case, quiet. */
+.label {
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--color-accent-bg);
+}
+
+/* macOS: the hidden title bar's drag area. */
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+/* Desktop app: no rubber-band text selection on chrome, pointer cursor stays default. */
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+}

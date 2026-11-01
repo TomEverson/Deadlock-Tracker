@@ -1,0 +1,27 @@
+{
+  "name": "@deadlock/cloud",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker: Sign in with Steam (better-auth) + sync API over D1 for the desktop app.",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply deadlock-cloud --local",
+    "db:migrate:remote": "wrangler d1 migrations apply deadlock-cloud --remote",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@deadlock/core": "workspace:*",
+    "@hono/zod-validator": "^0.9.1",
+    "better-auth": "^1.7.15",
+    "hono": "^4.13.16",
+    "kysely": "^0.29.7",
+    "kysely-d1": "^0.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261031.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.156.0"
+  }
+}
