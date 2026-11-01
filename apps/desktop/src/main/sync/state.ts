@@ -62,14 +62,18 @@ export async function recordRequest(name: BudgetName): Promise<void> {
 // bots rest ~2h too).
 const BACKOFF_KEY = 'gc.backoffUntil'
 export const RATE_LIMIT_BACKOFF_MS = 2 * 60 * 60 * 1000
+// Detail requests recover faster than history pages; Steam's message says
+// roughly 30 minutes. Never shorten a longer history backoff that's active.
+export const DETAIL_RATE_LIMIT_BACKOFF_MS = 30 * 60 * 1000
 
 export async function backoffUntil(): Promise<number | null> {
   const until = await getState<number>(BACKOFF_KEY)
   return until && until > Date.now() ? until : null
 }
 
-export async function startBackoff(): Promise<number> {
-  const until = Date.now() + RATE_LIMIT_BACKOFF_MS
+export async function startBackoff(durationMs = RATE_LIMIT_BACKOFF_MS): Promise<number> {
+  const current = await backoffUntil()
+  const until = Math.max(current ?? 0, Date.now() + durationMs)
   await setState(BACKOFF_KEY, until)
   return until
 }

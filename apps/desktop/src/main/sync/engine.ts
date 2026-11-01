@@ -1,4 +1,5 @@
 import type { CompiledQuery } from 'kysely'
+import { MATCH_DETAIL_VERSION } from '@deadlock/core/domain/matches/validators/match-detail'
 import { trimMetadata, type PlayerProfile } from '@deadlock/core/domain/matches/services/trim-metadata'
 import { toPlayerMatchRow, type HistoryEntry } from '@deadlock/core/domain/players/services/match-rows'
 import { DeadlockGc, GcError, type GcErrorCode } from '@deadlock/core/steam/gc'
@@ -6,7 +7,7 @@ import { downloadMatchMetadata } from '@deadlock/core/steam/match-metadata'
 import { db } from '../db'
 import { fetchSteamProfiles, fetchPlayerRanks } from '../services/deadlock-api'
 import { getRefreshToken, saveRefreshToken, setSteamAccount } from '../steam/account'
-import { backoffUntil, budgetLeft, recordRequest, startBackoff } from './state'
+import { backoffUntil, budgetLeft, DETAIL_RATE_LIMIT_BACKOFF_MS, recordRequest, startBackoff } from './state'
 
 // One sync run: Steam logon → Game Coordinator → friends list → match
 // histories → log off, writing to the app's local database. Match details are
@@ -336,20 +337,78 @@ export async function runSync(opts: SyncOptions, onProgress: (p: SyncProgress) =
   }
 }
 
-/** One match's details right now (opening a match page without them). */
-export async function syncOneMatch(matchId: number, cloud: DetailsSource | null): Promise<void> {
+const detailRequests = new Map<number, Promise<void>>()
+let detailQueue: Promise<unknown> = Promise.resolve()
+let lastDetailRequestAt = 0
+const DETAIL_REQUEST_GAP_MS = 1_500
+
+/** Let a full sync wait for on-demand detail downloads instead of overlapping sessions. */
+export async function waitForDetailRequests(): Promise<void> {
+  await detailQueue.catch(() => {})
+}
+
+function formatClock(at: number): string {
+  return new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+async function hasCurrentDetail(matchId: number): Promise<boolean> {
+  const row = await db()
+    .selectFrom('matchDetail')
+    .select((eb) => eb.fn<number>('json_extract', [eb.ref('data'), eb.val('$.v')]).as('v'))
+    .where('matchId', '=', matchId)
+    .executeTakeFirst()
+  return Number(row?.v ?? 0) >= MATCH_DETAIL_VERSION
+}
+
+/**
+ * One match's details right now (opening a match page without them).
+ *
+ * Requests are serialized and de-duplicated: clicking two matches quickly
+ * must not open two Steam sessions, and clicking the same match twice must
+ * not spend two GC requests. Steam's per-account detail quota is small.
+ */
+export function syncOneMatch(matchId: number, cloud: DetailsSource | null): Promise<void> {
+  const pending = detailRequests.get(matchId)
+  if (pending) return pending
+
+  const run = detailQueue.then(() => syncOneMatchInner(matchId, cloud))
+  detailQueue = run.catch(() => {})
+  const tracked = run.finally(() => detailRequests.delete(matchId))
+  detailRequests.set(matchId, tracked)
+  return tracked
+}
+
+async function syncOneMatchInner(matchId: number, cloud: DetailsSource | null): Promise<void> {
+  // A match that is already current locally needs no network request at all.
+  if (await hasCurrentDetail(matchId)) return
+
+  // Cloud first: another install may already have paid the Steam request.
   if (cloud && (await cloud.pull([matchId]).catch(() => new Set<number>())).has(matchId)) return
+
   const token = await getRefreshToken()
   if (!token) throw new SyncAbort('Connect your Steam account in Settings first.')
-  if (await backoffUntil()) throw new SyncAbort('Steam asked us to slow down; try again later.')
+
+  const until = await backoffUntil()
+  if (until) throw new SyncAbort(`Steam rate limit hit. Match details resume after ${formatClock(until)}.`)
+
   if ((await budgetLeft('details')) === 0) throw new SyncAbort('Steam request cap reached; try again later.')
+
+  // gc.pace() only covers requests inside one session; separate sessions need
+  // their own gap so a burst of clicks can't hammer the GC.
+  const wait = lastDetailRequestAt + DETAIL_REQUEST_GAP_MS - Date.now()
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
+  lastDetailRequestAt = Date.now()
+
   const gc = new DeadlockGc((t) => void saveRefreshToken(t))
   try {
     await gc.connect(token)
     await gc.openGameCoordinator()
     await fetchAndStoreMatchDetail(gc, matchId)
   } catch (err) {
-    if (err instanceof GcError && err.code === 'rate_limited') await startBackoff()
+    if (err instanceof GcError && err.code === 'rate_limited') {
+      const resume = await startBackoff(DETAIL_RATE_LIMIT_BACKOFF_MS)
+      throw new SyncAbort(`Steam rate limit hit for match details. Try again after ${formatClock(resume)}.`)
+    }
     throw err
   } finally {
     gc.disconnect()

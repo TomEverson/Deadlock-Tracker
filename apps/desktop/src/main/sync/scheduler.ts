@@ -3,7 +3,7 @@ import { broadcast } from '../broadcast'
 import { ensureCloudSession } from '../cloud/auth'
 import { cloudDetailsSource, cloudSync } from '../cloud/sync'
 import { getSteamAccount, hasCliLogin } from '../steam/account'
-import { runSync, refreshFriends, syncOneMatch, SyncAbort, type SyncOptions } from './engine'
+import { runSync, refreshFriends, syncOneMatch, waitForDetailRequests, SyncAbort, type SyncOptions } from './engine'
 import { backoffUntil, budgetUsed, getState, setState } from './state'
 
 // Steam sync is manual only (the sidebar's Sync now, Settings, a player's
@@ -12,6 +12,7 @@ import { backoffUntil, budgetUsed, getState, setState } from './state'
 // to the renderer (sidebar widget, Settings).
 
 let running = false
+let activeRun: Promise<void> | null = null
 let friendsRefresh: Promise<void> | null = null
 let live: Pick<SyncStatus, 'step' | 'progress' | 'message' | 'messageTone'> = { step: null, progress: null, message: null, messageTone: null }
 
@@ -42,9 +43,10 @@ async function run(trigger: 'auto' | 'manual', opts: SyncOptions = {}): Promise<
   await publish()
   const summary: SyncRunSummary = { at: new Date().toISOString(), trigger, newMatches: 0, players: 0, cloud: null, note: null }
   try {
-    // A launch friend refresh may still be logging on; don't open a second
-    // Steam session on top of it.
+    // A launch friend refresh or an on-demand match download may still be
+    // using the Steam account; don't open a second session on top of it.
     if (friendsRefresh) await friendsRefresh
+    await waitForDetailRequests()
     // Pull first so other installs' data (and match details) are here before we ask Steam.
     live.step = 'Syncing with the cloud'
     await publish()
@@ -89,7 +91,14 @@ async function run(trigger: 'auto' | 'manual', opts: SyncOptions = {}): Promise<
 }
 
 export function runNow(opts: { accountId?: number; full?: boolean } = {}): void {
-  void run('manual', { target: opts.accountId ?? null, full: opts.full })
+  if (activeRun) return
+  const p = run('manual', { target: opts.accountId ?? null, full: opts.full })
+  activeRun = p
+  void p
+    .finally(() => {
+      if (activeRun === p) activeRun = null
+    })
+    .catch(() => {})
 }
 
 /**
@@ -111,6 +120,10 @@ export function refreshFriendsNow(): void {
 }
 
 export async function fetchMatchNow(matchId: number): Promise<{ ok: true } | { ok: false; message: string }> {
+  // Don't open a second Steam session while a full sync or the launch friend
+  // refresh is using the account; Steam treats overlapping logons as contention.
+  if (activeRun) await activeRun.catch(() => {})
+  if (friendsRefresh) await friendsRefresh.catch(() => {})
   try {
     await syncOneMatch(matchId, cloudDetailsSource())
     void cloudSync().catch(() => null)

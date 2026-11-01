@@ -2,6 +2,7 @@ import { createFileRoute, Link, notFound, useNavigate, useRouter } from '@tansta
 import { useState } from 'react'
 import { z } from 'zod'
 import { Card, LocalDateTime, RankBadge, TabBar, tabClass } from '~/components/ui'
+import { useSyncStatus } from '~/domain/sync/hooks'
 import { AnalysisSummary, KeyMoments, LanesCard, PlayerReports } from '~/domain/matches/components/MatchAnalysis'
 import { NetWorthChart } from '~/domain/matches/components/NetWorthChart'
 import { Scoreboard } from '~/domain/matches/components/Scoreboard'
@@ -45,10 +46,14 @@ function MatchPage() {
         <Card title={`Match ${matchId}`}>
           <div className="p-4">
             <p className="text-sm text-ink-2">{result.message}</p>
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4 grid gap-3">
               <DownloadButton matchId={matchId} onDone={() => void router.invalidate()} />
               {player && (
-                <Link to="/players/$accountId" params={{ accountId: player }} className="flex h-8 items-center rounded-md border border-line px-3 text-sm text-ink-2 hover:text-ink">
+                <Link
+                  to="/players/$accountId"
+                  params={{ accountId: player }}
+                  className="inline-flex h-8 w-fit items-center rounded-md border border-line px-3 text-sm text-ink-2 hover:text-ink"
+                >
                   Back to player
                 </Link>
               )}
@@ -188,20 +193,33 @@ function MatchPage() {
 
 function DownloadButton({ matchId, onDone }: { matchId: number; onDone: () => void }) {
   const [state, setState] = useState<{ kind: 'idle' | 'busy' } | { kind: 'error'; message: string }>({ kind: 'idle' })
+  const status = useSyncStatus()
+  // getSyncStatus() clears expired pauses, and useSyncStatus refreshes at the
+  // deadline, so a non-null backoff means Steam is paused right now.
+  const pausedUntil = status?.backoffUntil ? new Date(status.backoffUntil) : null
+  const paused = pausedUntil !== null
   return (
     <div className="grid gap-2">
       <button
         type="button"
-        disabled={state.kind === 'busy'}
+        disabled={state.kind === 'busy' || paused}
         onClick={() => {
           setState({ kind: 'busy' })
           void window.api.sync.match(matchId).then((r) => (r.ok ? onDone() : setState({ kind: 'error', message: r.message })))
         }}
         className="h-8 rounded-md bg-accent px-3 text-sm font-medium text-white hover:bg-accent-strong disabled:opacity-60"
       >
-        {state.kind === 'busy' ? 'Downloading…' : 'Download from Steam'}
+        {state.kind === 'busy' ? 'Downloading…' : paused ? 'Steam rate limit hit' : 'Download from Steam'}
       </button>
-      {state.kind === 'error' ? <p className="text-xs text-loss">{state.message}</p> : <p className="text-xs text-muted">Uses one Steam request.</p>}
+      {state.kind === 'error' ? (
+        <p className="text-xs text-loss">{state.message}</p>
+      ) : paused && pausedUntil ? (
+        <p className="text-xs text-ink-2">
+          Steam rate limit hit. Try again after {pausedUntil.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. Matches already saved or in the cloud still open.
+        </p>
+      ) : (
+        <p className="text-xs text-muted">Uses one Steam request. Steam limits these; avoid repeated downloads.</p>
+      )}
     </div>
   )
 }

@@ -14,6 +14,19 @@ export function useSyncStatus(): SyncStatus | null {
       off()
     }
   }, [])
+
+  // Refresh once the Steam pause expires, so buttons re-enable without a reload.
+  useEffect(() => {
+    const until = status?.backoffUntil
+    if (!until) return
+    const ms = new Date(until).getTime() - Date.now()
+    if (ms <= 0) return
+    const timer = setTimeout(() => {
+      void window.api.sync.status().then(setStatus)
+    }, ms + 1000)
+    return () => clearTimeout(timer)
+  }, [status?.backoffUntil])
+
   return status
 }
 

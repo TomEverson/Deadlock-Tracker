@@ -308,7 +308,7 @@ Conflict rules: `player_match` and `match_detail` are immutable (insert-or-ignor
 
 **Phase 3 — Steam in the app** ✅
 - [x] Settings → Steam: QR login (steam-session, SteamClient tokens) + password/Steam Guard fallback + "use the old CLI login"; refresh token encrypted with async safeStorage
-- [x] Sync engine in the main process (friends, histories with watermark, details) — local 24h request counters in `sync_state`, Steam's RateLimited answer is authoritative, 2h backoff, in-game skip, cloud hook for details
+- [x] Sync engine in the main process (friends, histories with watermark, details) — local 24h request counters in `sync_state`, Steam's RateLimited answer is authoritative, 2h history / 30 min detail backoff, detail downloads serialized and de-duplicated, in-game skip, cloud hook for details
 - [x] Manual sync only (sidebar Sync widget + Settings status/usage, per-player Sync), friend list refreshed on launch over the normal Steam connection (no GC requests), "Download from Steam" on a match, pages reload on `data:changed`
 
 **Phase 4 — Cloud** ✅ — live at https://deadlock-cloud.studycafe-125.workers.dev (D1 `deadlock-cloud`, APAC)
