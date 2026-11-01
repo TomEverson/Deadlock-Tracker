@@ -44,6 +44,7 @@ export async function getFriends(): Promise<FriendList> {
     games: Number(r.games),
     wins: Number(r.wins),
     lastMatchAt: r.lastMatchAt == null ? null : Number(r.lastMatchAt),
+    lastSyncedAt: r.lastSyncedAt,
   })
   const [self, friends] = await Promise.all([selfRow ? toFriend(selfRow) : null, Promise.all(played.map(toFriend))])
   friends.sort((a, b) => (b.lastMatchAt ?? 0) - (a.lastMatchAt ?? 0))

@@ -149,7 +149,7 @@ export class DeadlockGc {
     return id
   }
 
-  async connect(refreshToken: string): Promise<void> {
+  async connect(refreshToken: string, opts: { checkPlayingState?: boolean } = {}): Promise<void> {
     const loggedOn = new Promise<void>((resolve, reject) => {
       this.client.once('loggedOn', () => resolve())
       this.client.once('error', (err) => {
@@ -165,6 +165,10 @@ export class DeadlockGc {
     })
     this.client.logOn({ refreshToken, logonID: LOGON_ID })
     await withTimeout(loggedOn, LOGON_TIMEOUT_MS, () => new GcError('timeout', 'Steam logon timed out'))
+
+    // Friend-list refreshes only need logon; they never touch the Game
+    // Coordinator, so being in a game is irrelevant.
+    if (opts.checkPlayingState === false) return
 
     // Never kick your real game session: if you're in a game, bail out.
     const blocked = await new Promise<boolean>((resolve) => {

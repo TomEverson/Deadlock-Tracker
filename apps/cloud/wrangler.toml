@@ -8,10 +8,6 @@ preview_urls = false
 [observability]
 enabled = true
 
-[vars]
-# Your SteamID3 (account id). Becomes admin on first sign-in.
-ADMIN_ACCOUNT_ID = "1810716873"
-
 [[d1_databases]]
 binding = "DB"
 database_name = "deadlock-cloud"

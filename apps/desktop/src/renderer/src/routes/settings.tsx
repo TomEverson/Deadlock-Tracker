@@ -1,12 +1,11 @@
-import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useState, type ReactNode } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
 import { TimeAgo } from '~/components/ui'
 import { AccountPanel } from '~/domain/sync/components/AccountPanel'
 import { SteamConnect } from '~/domain/sync/components/SteamConnect'
 import { useSyncStatus } from '~/domain/sync/hooks'
 
 export const Route = createFileRoute('/settings')({
-  loader: () => window.api.data.legacyStatus(),
   component: SettingsPage,
 })
 
@@ -22,18 +21,12 @@ function Section({ title, description, children }: { title: string; description?
   )
 }
 
-function Meter({ label, used, limit }: { label: string; used: number; limit: number }) {
+/** Informational only: Steam sets the real limit and doesn't publish it. */
+function RequestUsage({ label, used }: { label: string; used: number }) {
   return (
-    <div className="grid gap-1">
-      <div className="flex justify-between text-xs">
-        <span className="text-ink-2">{label}</span>
-        <span className="num text-muted">
-          {used} / {limit} today
-        </span>
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-surface-2">
-        <div className={`h-full rounded-full ${used >= limit ? 'bg-loss' : 'bg-accent'}`} style={{ width: `${Math.min(100, (used / limit) * 100)}%` }} />
-      </div>
+    <div className="flex justify-between text-xs">
+      <span className="text-ink-2">{label}</span>
+      <span className="num text-muted">{used} in the last 24h</span>
     </div>
   )
 }
@@ -41,10 +34,7 @@ function Meter({ label, used, limit }: { label: string; used: number; limit: num
 const button = 'h-8 rounded-md border border-line px-3 text-sm text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50'
 
 function SettingsPage() {
-  const legacy = Route.useLoaderData()
   const status = useSyncStatus()
-  const router = useRouter()
-  const [imported, setImported] = useState<string | null>(null)
 
   return (
     <div className="grid gap-6">
@@ -57,7 +47,10 @@ function SettingsPage() {
           {!status ? null : status.steam ? <AccountPanel steam={status.steam} /> : <SteamConnect />}
         </Section>
 
-        <Section title="Sync" description="Runs when the app opens and every 30 minutes. Steam limits how often match data can be read, so big backlogs fill in over a few days.">
+        <Section
+          title="Sync"
+          description="Syncs only when you ask: Sync now, a player's Sync button, or right after connecting Steam. Each run reads match histories only; a match's details are downloaded when you open it. Automatic syncing stays off to keep Steam requests well under its limit."
+        >
           {status && (
             <div className="grid gap-4">
               <div className="text-sm">
@@ -68,9 +61,7 @@ function SettingsPage() {
                   </span>
                 ) : status.last ? (
                   <span className="text-ink-2">
-                    Last sync <TimeAgo at={status.last.at} /> · {status.last.newMatches} new matches · {status.last.detailsFetched + status.last.detailsFromCloud} match details
-                    {status.last.detailsFromCloud > 0 && ` (${status.last.detailsFromCloud} from the cloud)`}
-                    {status.last.detailsRemaining > 0 && ` · ${status.last.detailsRemaining} still to download`}
+                    Last sync <TimeAgo at={status.last.at} /> · {status.last.newMatches} new matches
                   </span>
                 ) : (
                   <span className="text-muted">Not synced yet.</span>
@@ -82,18 +73,24 @@ function SettingsPage() {
                   </p>
                 )}
               </div>
-              <div className="grid max-w-md gap-3">
-                <Meter label="Match history requests" used={status.budgets.history.used} limit={status.budgets.history.limit} />
-                <Meter label="Match detail requests" used={status.budgets.details.used} limit={status.budgets.details.limit} />
+              <div className="grid max-w-md gap-2">
+                <RequestUsage label="Match history requests" used={status.budgets.history.used} />
+                <RequestUsage label="Match detail requests" used={status.budgets.details.used} />
+                <p className="text-xs text-muted">Steam decides the actual limit and doesn't publish it; the app stops when Steam asks it to slow down.</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button type="button" className={button} disabled={!status.steam || status.state === 'running'} onClick={() => void window.api.sync.run()}>
+                <button
+                  type="button"
+                  className={button}
+                  disabled={!status.steam || status.state === 'running' || status.backoffUntil !== null}
+                  onClick={() => void window.api.sync.run()}
+                >
                   Sync now
                 </button>
                 <button
                   type="button"
                   className={button}
-                  disabled={!status.steam || status.state === 'running'}
+                  disabled={!status.steam || status.state === 'running' || status.backoffUntil !== null}
                   title="Re-reads every match history from the start. Uses more Steam requests."
                   onClick={() => void window.api.sync.run({ full: true })}
                 >
@@ -103,26 +100,6 @@ function SettingsPage() {
             </div>
           )}
         </Section>
-
-        {legacy.found && (
-          <Section title="Previous version" description="Bring over matches and details stored by the old web version (saved in ~/.deadlock-tracker).">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                className={button}
-                onClick={() =>
-                  void window.api.data.importLegacy().then((r) => {
-                    setImported(`Imported ${r.matches} matches, ${r.details} match details, ${r.players} players.`)
-                    void router.invalidate()
-                  })
-                }
-              >
-                Import again
-              </button>
-              {imported && <span className="text-xs text-muted">{imported}</span>}
-            </div>
-          </Section>
-        )}
       </div>
     </div>
   )

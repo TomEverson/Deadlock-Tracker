@@ -80,13 +80,4 @@ export const detailsGetBody = z.object({ matchIds: z.array(int.positive()).max(D
 export interface MeResult {
   accountId: number
   name: string
-  role: 'admin' | 'member'
-}
-
-export const allowlistBody = z.object({ accountId: int.positive(), role: z.enum(['admin', 'member']).default('member'), note: z.string().max(100).optional() })
-export interface AllowlistEntry {
-  accountId: number
-  role: 'admin' | 'member'
-  note: string | null
-  addedAt: string
 }

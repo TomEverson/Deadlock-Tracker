@@ -1,4 +1,5 @@
 import { db as getDb } from '../db'
+import { cloudDetailsSource } from '../cloud/sync'
 import { fetchSteamProfiles } from './deadlock-api'
 import { getSelfAccountId } from './player-repo'
 import { getHeroMap, getItemMap, getRankInfo, heroOrFallback } from './assets'
@@ -53,14 +54,32 @@ async function fillMissingNames(detail: MatchDetailData): Promise<MatchDetailDat
   return patched
 }
 
+// The page shouldn't sit on a spinner while a flaky cloud is unreachable; a
+// missed detail just falls through to the explicit Steam download button.
+const CLOUD_DETAIL_WAIT_MS = 6000
+
+async function pullFromCloud(matchId: number): Promise<boolean> {
+  const pull = cloudDetailsSource()
+    .pull([matchId])
+    .catch(() => new Set<number>())
+  const timeout = new Promise<Set<number>>((resolve) => {
+    setTimeout(() => resolve(new Set()), CLOUD_DETAIL_WAIT_MS).unref()
+  })
+  return (await Promise.race([pull, timeout])).has(matchId)
+}
+
 export async function getMatchDetail(matchId: number): Promise<MatchDetailResult> {
-  // Details come from Valve via the sync engine (or the cloud);
-  // pages only read what's stored.
-  const cached = await loadCached(matchId)
+  // Local first. If it's missing, the group may already have it in D1 — pulling
+  // from the cloud costs no Steam request. Only when neither has it does the
+  // page offer an explicit Steam download.
+  let cached = await loadCached(matchId)
+  if (!cached && (await pullFromCloud(matchId))) {
+    cached = await loadCached(matchId)
+  }
   if (!cached) {
     return {
       kind: 'unavailable',
-      message: "This match's details haven't been downloaded yet. The next sync fetches them, or download them now.",
+      message: "This match's details aren't in the cloud yet. Download them from Steam when you want the full scoreboard.",
     }
   }
 

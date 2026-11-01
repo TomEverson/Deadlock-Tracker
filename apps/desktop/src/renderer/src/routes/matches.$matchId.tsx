@@ -118,12 +118,8 @@ function MatchPage() {
           <span className="num">{formatDuration(detail.durationS)}</span>
           <span aria-hidden>·</span>
           <LocalDateTime at={detail.startTime * 1000} />
-          {(avgRank[0] || avgRank[1]) && (
-            <>
-              <span aria-hidden>·</span>
-              <RankBadge rank={avgRank[perspectiveTeam] ?? avgRank[0] ?? null} size={14} />
-            </>
-          )}
+          <span aria-hidden>·</span>
+          <RankBadge rank={avgRank[perspectiveTeam] ?? avgRank[0] ?? null} size={14} />
         </div>
       </header>
 
@@ -152,9 +148,12 @@ function MatchPage() {
             <AnalysisSummary analysis={analysis} perspective={perspective} />
           ) : (
             <Card title="Analysis">
-              <p className="p-4 text-sm text-ink-2">
-                This match was downloaded before analysis existed. The next sync re-downloads it with the extra data.
-              </p>
+              <div className="grid gap-3 p-4">
+                <p className="text-sm text-ink-2">
+                  This match's details were saved by an older version. Download them again from Steam to see the full analysis.
+                </p>
+                <DownloadButton matchId={matchId} onDone={() => void router.invalidate()} />
+              </div>
             </Card>
           )}
           <div className={`grid gap-4 ${analysis ? 'lg:grid-cols-[3fr_2fr]' : ''}`}>
@@ -200,9 +199,9 @@ function DownloadButton({ matchId, onDone }: { matchId: number; onDone: () => vo
         }}
         className="h-8 rounded-md bg-accent px-3 text-sm font-medium text-white hover:bg-accent-strong disabled:opacity-60"
       >
-        {state.kind === 'busy' ? 'Downloading…' : 'Download details'}
+        {state.kind === 'busy' ? 'Downloading…' : 'Download from Steam'}
       </button>
-      {state.kind === 'error' && <p className="text-xs text-loss">{state.message}</p>}
+      {state.kind === 'error' ? <p className="text-xs text-loss">{state.message}</p> : <p className="text-xs text-muted">Uses one Steam request.</p>}
     </div>
   )
 }

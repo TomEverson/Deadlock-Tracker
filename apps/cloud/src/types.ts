@@ -6,6 +6,5 @@ export interface AppEnv {
   Variables: {
     /** Signed-in user's Steam account id (SteamID3). */
     accountId: number
-    role: 'admin' | 'member'
   }
 }

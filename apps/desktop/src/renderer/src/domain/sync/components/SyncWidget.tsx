@@ -16,6 +16,7 @@ export function SyncWidget() {
   }
 
   const running = status.state === 'running'
+  const paused = status.backoffUntil !== null
   return (
     <div className="grid gap-2">
       <div className="min-h-8 text-xs leading-4 text-muted">
@@ -33,6 +34,8 @@ export function SyncWidget() {
           </>
         ) : status.message ? (
           <span className={status.messageTone === 'error' ? 'text-loss' : status.messageTone === 'warn' ? 'text-ink-2' : ''}>{status.message}</span>
+        ) : paused ? (
+          <span className="text-ink-2">Steam paused until {new Date(status.backoffUntil!).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
         ) : status.last ? (
           <>
             Synced <TimeAgo at={status.last.at} />
@@ -45,7 +48,7 @@ export function SyncWidget() {
       <div className="flex gap-1.5">
         <button
           type="button"
-          disabled={running}
+          disabled={running || paused}
           onClick={() => void window.api.sync.run()}
           className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-line text-xs text-ink-2 hover:border-line-strong hover:text-ink disabled:opacity-50"
         >

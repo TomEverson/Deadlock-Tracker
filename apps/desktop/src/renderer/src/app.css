@@ -109,14 +109,50 @@ body {
   color: var(--color-muted);
 }
 
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
-  border-radius: 4px;
+/* Keyboard focus ring. Kept in the base layer so utilities like
+   `focus:outline-none` can replace it for inputs that style their wrapper. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+    border-radius: 4px;
+  }
 }
 
 ::selection {
   background: var(--color-accent-bg);
+}
+
+/* Thin, quiet scrollbars. The transparent border + padding-box clip keeps the
+   visible thumb ~4px wide while leaving a comfortable 8px hit target. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-ink-2) 35%, transparent);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-ink-2) 65%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: var(--color-ink-2);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
 }
 
 /* macOS: the hidden title bar's drag area. */

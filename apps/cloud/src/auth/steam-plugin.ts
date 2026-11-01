@@ -1,8 +1,6 @@
 import type { BetterAuthPlugin } from 'better-auth'
 import { createAuthEndpoint } from 'better-auth/api'
 import { z } from 'zod'
-import type { Env } from '../env'
-import { isAllowed } from '../sync/allowlist'
 import { steamLoginUrl, toSteamId64, verifySteamAssertion } from './steam-openid'
 
 // better-auth plugin: "Sign in through Steam" for the desktop app.
@@ -10,8 +8,8 @@ import { steamLoginUrl, toSteamId64, verifySteamAssertion } from './steam-openid
 //   GET /api/auth/steam/start?redirect=deadlock-tracker://auth
 //     → Steam's login page
 //   GET /api/auth/steam/callback?state=…  (Steam redirects here)
-//     → verifies the assertion with Steam, checks the allowlist, creates a
-//       session → 302 deadlock-tracker://auth?token=…
+//     → verifies the assertion with Steam, creates a session
+//       → 302 deadlock-tracker://auth?token=…
 //
 // The app opens /start in its own window and catches the final redirect.
 
@@ -24,7 +22,7 @@ function withParams(target: string, params: Record<string, string>): string {
   return `${target}${target.includes('?') ? '&' : '?'}${new URLSearchParams(params)}`
 }
 
-export function steamAuth(env: Env): BetterAuthPlugin {
+export function steamAuth(): BetterAuthPlugin {
   return {
     id: 'steam',
     endpoints: {
@@ -59,7 +57,6 @@ export function steamAuth(env: Env): BetterAuthPlugin {
           const returnTo = `${ctx.context.baseURL}/steam/callback?state=${ctx.query.state}`
           const accountId = await verifySteamAssertion(new URL(ctx.request!.url), returnTo).catch(() => null)
           if (!accountId) return fail('steam_rejected')
-          if (!(await isAllowed(env, accountId))) return fail('not_allowed', { account: String(accountId) })
 
           const steamId64 = toSteamId64(accountId)
           const existing = await ctx.context.adapter.findOne<{ userId: string }>({
@@ -80,7 +77,7 @@ export function steamAuth(env: Env): BetterAuthPlugin {
           }
           const session = await ctx.context.internalAdapter.createSession(userId)
           if (!session) return fail('server_error')
-          throw ctx.redirect(withParams(target, { token: session.token, account: String(accountId) }))
+          throw ctx.redirect(withParams(target, { token: session.token }))
         },
       ),
     },

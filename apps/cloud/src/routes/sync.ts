@@ -12,7 +12,7 @@ export const syncRoutes = new Hono<AppEnv>()
   .get('/me', async (c) => {
     const accountId = c.get('accountId')
     const name = await c.env.DB.prepare('SELECT persona_name FROM player WHERE account_id = ?').bind(accountId).first<string>('persona_name')
-    return c.json({ accountId, name: name ?? `Steam ${accountId}`, role: c.get('role') } satisfies MeResult)
+    return c.json({ accountId, name: name ?? `Steam ${accountId}` } satisfies MeResult)
   })
   .post('/push', zValidator('json', pushBody, validationHook), async (c) => c.json(await handlePush(c.env, c.req.valid('json'), c.get('accountId'))))
   .get('/pull', zValidator('query', z.object({ since: z.coerce.number().int().nonnegative().default(0) }), validationHook), async (c) =>

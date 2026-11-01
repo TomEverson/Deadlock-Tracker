@@ -16,7 +16,7 @@ export function createAuth(env: Env, request: Request) {
     emailAndPassword: { enabled: false },
     session: { expiresIn: 60 * 60 * 24 * 90, updateAge: 60 * 60 * 24 },
     telemetry: { enabled: false },
-    plugins: [bearer(), steamAuth(env)],
+    plugins: [bearer(), steamAuth()],
   })
 }
 

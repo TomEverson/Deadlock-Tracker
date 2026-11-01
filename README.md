@@ -22,8 +22,25 @@ pnpm desktop            # dev build with hot reload
 ```
 
 First launch: **Settings → Steam** (QR code or password + Steam Guard) and
-**Settings → Cloud → Sign in with Steam**. Sync runs on launch and every 30
-minutes; the sidebar has a **Sync now** button.
+**Settings → Cloud → Sign in with Steam**. Match sync is manual — use the
+sidebar's **Sync now** (the friend list and names refresh on app launch
+without reading any matches).
+
+## Build the macOS app
+
+```bash
+pnpm --filter @deadlock/desktop dist:mac
+```
+
+The `.app`, `.dmg` and `.zip` are written to `apps/desktop/release/`. The
+release build is unsigned and Apple Silicon (arm64) only. On first launch,
+right-click the app and choose **Open**, or clear the quarantine flag:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Deadlock Tracker.app"
+```
+
+Published builds: <https://github.com/TomEverson/Deadlock-Tracker/releases>.
 
 ## Cloud
 
@@ -36,16 +53,18 @@ pnpm db:migrate:remote      # apply migrations to the real D1
 pnpm deploy
 ```
 
-Access is allowlist-only. The admin (`ADMIN_ACCOUNT_ID` in `wrangler.toml`)
-is allowed automatically and adds friends in **Settings → Cloud** by account
-ID, SteamID64 or profile URL. Removing someone also signs them out.
+Access is open: any Steam account that signs in can read and write the
+shared data. There is no allowlist or invite step.
 
 ## Steam limits
 
-Valve publishes none. The app stays under what deadlock-api uses per account:
-40 history and 45 match-detail requests per 24 h, and pauses Steam requests
-for 2 hours if Steam answers "rate limited". Details already in the cloud
-cost no Steam requests.
+Valve publishes none. The app keeps local 24-hour counters as a safety cap
+(40 history, 45 match-detail requests) and treats Steam's own "rate limited"
+answer as the real limit, pausing Steam requests for 2 hours when it happens.
+Sync only updates histories; a match's details are downloaded when you open it
+and ask, and cost no Steam request if another install already pushed them.
+Match sync is manual, and only the friend list (normal Steam connection, no
+Game Coordinator requests) refreshes on launch.
 
 ## Checks
 

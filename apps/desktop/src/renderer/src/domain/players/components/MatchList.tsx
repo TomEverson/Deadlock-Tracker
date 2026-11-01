@@ -29,7 +29,7 @@ function timeOf(startTime: number, local: boolean): string {
   return local ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleTimeString('en', { timeZone: 'UTC', hour: 'numeric', minute: '2-digit' })
 }
 
-export function MatchList({ accountId, matches }: { accountId: number; matches: PlayerMatchRow[] }) {
+export function MatchList({ accountId, matches, compact = false }: { accountId: number; matches: PlayerMatchRow[]; compact?: boolean }) {
   const [shown, setShown] = useState(PAGE)
   const [result, setResult] = useState<ResultFilter>('all')
   const [heroId, setHeroId] = useState<number | 'all'>('all')
@@ -51,39 +51,41 @@ export function MatchList({ accountId, matches }: { accountId: number; matches: 
 
   return (
     <div className="grid gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Segmented<ResultFilter>
-          value={result}
-          onChange={(v) => {
-            setResult(v)
-            setShown(PAGE)
-          }}
-          options={[
-            { value: 'all', label: 'All' },
-            { value: 'wins', label: 'Wins' },
-            { value: 'losses', label: 'Losses' },
-          ]}
-        />
-        <select
-          value={heroId}
-          onChange={(e) => {
-            setHeroId(e.target.value === 'all' ? 'all' : Number(e.target.value))
-            setShown(PAGE)
-          }}
-          aria-label="Filter by hero"
-          className="h-7 rounded-md border border-line bg-surface px-2 text-xs text-ink-2 hover:border-line-strong focus:outline-none"
-        >
-          <option value="all">All heroes</option>
-          {heroOptions.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.name}
-            </option>
-          ))}
-        </select>
-        <span className="num ml-auto text-xs text-muted">
-          {filtered.length} match{filtered.length === 1 ? '' : 'es'}
-        </span>
-      </div>
+      {!compact && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented<ResultFilter>
+            value={result}
+            onChange={(v) => {
+              setResult(v)
+              setShown(PAGE)
+            }}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'wins', label: 'Wins' },
+              { value: 'losses', label: 'Losses' },
+            ]}
+          />
+          <select
+            value={heroId}
+            onChange={(e) => {
+              setHeroId(e.target.value === 'all' ? 'all' : Number(e.target.value))
+              setShown(PAGE)
+            }}
+            aria-label="Filter by hero"
+            className="h-7 rounded-md border border-line bg-surface px-2 text-xs text-ink-2 hover:border-line-strong focus:outline-none"
+          >
+            <option value="all">All heroes</option>
+            {heroOptions.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+          <span className="num ml-auto text-xs text-muted">
+            {filtered.length} match{filtered.length === 1 ? '' : 'es'}
+          </span>
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="card px-4 py-10 text-center text-sm text-muted">{matches.length === 0 ? 'No matches stored for this player yet.' : 'No matches match these filters.'}</div>
@@ -151,7 +153,7 @@ export function MatchList({ accountId, matches }: { accountId: number; matches: 
               </section>
             )
           })}
-          {shown < filtered.length && (
+          {!compact && shown < filtered.length && (
             <button type="button" onClick={() => setShown((s) => s + PAGE)} className="w-full border-t border-line py-2.5 text-xs text-muted hover:bg-surface-2 hover:text-ink">
               Show more · {filtered.length - shown} left
             </button>

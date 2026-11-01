@@ -40,6 +40,7 @@ export function listFriends() {
       'player.avatarUrl',
       'player.rankBadge',
       'player.isSelf',
+      'player.lastSyncedAt',
       eb.fn.count<number>('playerMatch.matchId').as('games'),
       eb.fn.coalesce(eb.fn.sum<number>('playerMatch.won'), eb.lit(0)).as('wins'),
       eb.fn.max('playerMatch.startTime').as('lastMatchAt'),

@@ -1,16 +1,13 @@
 import { ipcMain } from 'electron'
-import type { AllowlistEntry } from '@deadlock/core/sync/protocol'
 import { z } from 'zod'
 import { parsePlayerInput } from '@deadlock/core/domain/players/validators/player-input'
 import { CHANNELS, type DesktopApi } from '../../shared/api'
-import { findLegacyDatabase, importLegacyDatabase } from '../legacy-import'
 import { getMatchDetail } from '../services/match-detail'
 import { getFriends, getMates, searchPlayers } from '../services/player-lookup'
 import { buildPlayerOverview } from '../services/player-overview'
 import { getSelfAccountId, markViewed } from '../services/player-repo'
-import { db } from '../db'
 import { ensureCloudSession, getCloudSignInState, signOut } from '../cloud/auth'
-import { CLOUD_URL, cloudFetch, getCloudAccount } from '../cloud/client'
+import { CLOUD_URL, getCloudAccount } from '../cloud/client'
 import { pendingPush } from '../cloud/sync'
 import { getState } from '../sync/state'
 import { disconnectSteam, importCliLogin } from '../steam/account'
@@ -51,17 +48,6 @@ const handlers: Handlers = {
   matches: {
     detail: (matchId) => getMatchDetail(id.parse(matchId)),
   },
-  data: {
-    async legacyStatus() {
-      const row = await db().selectFrom('playerMatch').select('matchId').limit(1).executeTakeFirst()
-      return { found: findLegacyDatabase(), hasData: row !== undefined }
-    },
-    async importLegacy() {
-      const file = findLegacyDatabase()
-      if (!file) throw new Error('No old database found')
-      return importLegacyDatabase(file)
-    },
-  },
   steam: {
     loginQr: () => startQrLogin(),
     loginPassword: (accountName, password) => startPasswordLogin(z.string().min(1).max(64).parse(accountName), z.string().min(1).max(256).parse(password)),
@@ -92,29 +78,8 @@ const handlers: Handlers = {
       }
     },
     async signIn() {
-      const state = await ensureCloudSession(true)
+      const state = await ensureCloudSession()
       if (state?.kind === 'signed-in') runNow() // pull everything the group already has
-    },
-    async allowlist() {
-      return (await cloudFetch<{ entries: AllowlistEntry[] }>('/v1/admin/allowlist')).entries
-    },
-    async allow(who, role) {
-      const parsed = parsePlayerInput(z.string().max(200).parse(who))
-      if (parsed?.kind !== 'account') return { ok: false, message: 'Enter an account ID, SteamID64 or Steam profile URL.' }
-      try {
-        await cloudFetch('/v1/admin/allowlist', { body: { accountId: parsed.accountId, role: role === 'admin' ? 'admin' : 'member' } })
-        return { ok: true }
-      } catch (err) {
-        return { ok: false, message: err instanceof Error ? err.message : String(err) }
-      }
-    },
-    async revoke(accountId) {
-      try {
-        await cloudFetch(`/v1/admin/allowlist/${id.parse(accountId)}`, { method: 'DELETE' })
-        return { ok: true }
-      } catch (err) {
-        return { ok: false, message: err instanceof Error ? err.message : String(err) }
-      }
     },
   },
   sync: {

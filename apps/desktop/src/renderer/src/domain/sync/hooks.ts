@@ -17,7 +17,7 @@ export function useSyncStatus(): SyncStatus | null {
   return status
 }
 
-/** Reload route data whenever local data changes (sync finished, import…). */
+/** Reload route data whenever local data changes (sync finished, data:changed…). */
 export function useReloadOnDataChange(): void {
   const router = useRouter()
   useEffect(() => window.api.on('data:changed', () => void router.invalidate()), [router])

@@ -105,6 +105,19 @@ export function searchSteamProfiles(query: string, limit = 10) {
   return apiGet('/v1/players/steam-search', z.array(steamProfile), { search_query: query, limit })
 }
 
+const accountRank = z.object({
+  account_id: z.number(),
+  /** tier * 10 + subrank; 0 when no recent ranked match reports a rank. */
+  badge: z.number(),
+})
+export type AccountRank = z.infer<typeof accountRank>
+
+/** Batch rank lookup (community API, not Steam). */
+export function fetchPlayerRanks(accountIds: number[]) {
+  if (accountIds.length === 0) return Promise.resolve([])
+  return apiGet('/v1/players/rank', z.array(accountRank), { account_ids: accountIds.join(',') })
+}
+
 
 const mateStat = z.object({
   mate_id: z.number(),

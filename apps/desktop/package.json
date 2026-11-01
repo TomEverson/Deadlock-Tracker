@@ -5,10 +5,12 @@
   "private": true,
   "type": "module",
   "description": "Deadlock match tracker — syncs from Steam locally, shares through Cloudflare.",
+  "author": "Tom Everson",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "dist:mac": "electron-vite build && electron-builder --mac --publish never",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "postinstall": "electron-rebuild --only better-sqlite3 --module-dir ."
@@ -44,5 +46,47 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vite": "^8.3.5"
+  },
+  "build": {
+    "appId": "com.tomeverson.deadlocktracker",
+    "directories": {
+      "output": "release",
+      "buildResources": "build-resources"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "npmRebuild": false,
+    "afterPack": "scripts/after-pack.cjs",
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "build-resources/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "notarize": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "Deadlock-Tracker-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "${productName} ${version}"
+    }
   }
 }

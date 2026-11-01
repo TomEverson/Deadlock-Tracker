@@ -1,8 +1,7 @@
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { createAuth } from './auth'
-import { requireMember } from './middleware'
-import { adminRoutes } from './routes/admin'
+import { requireAuth } from './middleware'
 import { syncRoutes } from './routes/sync'
 import type { AppEnv } from './types'
 
@@ -14,9 +13,8 @@ const v1 = new Hono<AppEnv>()
     await next()
     c.header('cache-control', 'no-store')
   })
-  .use(requireMember)
+  .use(requireAuth)
   .route('/', syncRoutes)
-  .route('/admin', adminRoutes)
 
 const app = new Hono<AppEnv>()
   .get('/', (c) => c.json({ ok: true, service: 'deadlock-cloud' }))

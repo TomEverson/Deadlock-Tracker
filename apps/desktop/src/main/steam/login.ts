@@ -45,7 +45,7 @@ function wire(s: LoginSession): void {
       .then(() => setSteamAccount(account))
       .then(() => emit({ kind: 'done', account }))
       // Same login signs the app in to the cloud, then the first sync runs.
-      .then(() => ensureCloudSession(true))
+      .then(() => ensureCloudSession())
       .then(() => onConnected?.())
     session = null
   })

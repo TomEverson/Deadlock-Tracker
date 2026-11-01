@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { closeDatabase, openDatabase } from './db'
 import { registerIpc } from './ipc'
 import { setOnConnected } from './steam/login'
-import { runNow, startScheduler } from './sync/scheduler'
+import { refreshFriendsNow, runNow } from './sync/scheduler'
 
 const isMac = process.platform === 'darwin'
 
@@ -52,7 +52,8 @@ void app.whenReady().then(() => {
   openDatabase(join(app.getPath('userData'), 'deadlock.sqlite'))
   registerIpc()
   createWindow()
-  startScheduler()
+  // Friend list + names only; no match sync, no Game Coordinator requests.
+  refreshFriendsNow()
   setOnConnected(() => runNow())
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

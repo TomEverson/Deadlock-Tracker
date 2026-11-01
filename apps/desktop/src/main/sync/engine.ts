@@ -1,20 +1,19 @@
-import { sql, type CompiledQuery } from 'kysely'
+import type { CompiledQuery } from 'kysely'
 import { trimMetadata, type PlayerProfile } from '@deadlock/core/domain/matches/services/trim-metadata'
-import { MATCH_DETAIL_VERSION } from '@deadlock/core/domain/matches/validators/match-detail'
 import { toPlayerMatchRow, type HistoryEntry } from '@deadlock/core/domain/players/services/match-rows'
 import { DeadlockGc, GcError, type GcErrorCode } from '@deadlock/core/steam/gc'
 import { downloadMatchMetadata } from '@deadlock/core/steam/match-metadata'
 import { db } from '../db'
-import { fetchSteamProfiles } from '../services/deadlock-api'
+import { fetchSteamProfiles, fetchPlayerRanks } from '../services/deadlock-api'
 import { getRefreshToken, saveRefreshToken, setSteamAccount } from '../steam/account'
 import { backoffUntil, budgetLeft, recordRequest, startBackoff } from './state'
 
 // One sync run: Steam logon → Game Coordinator → friends list → match
-// histories → match details → log off, writing to the app's local database.
+// histories → log off, writing to the app's local database. Match details are
+// not part of a sync; they are downloaded per match, on demand.
 
 const MAX_PAGES = 60
 const NO_MATCHES_RECHECK_MS = 7 * 24 * 60 * 60 * 1000
-const RETRY_FAILED_DETAIL_AFTER_MS = 24 * 60 * 60 * 1000
 // After these, nothing else is worth trying this session.
 const SESSION_OVER: GcErrorCode[] = ['in_game', 'login', 'timeout']
 
@@ -29,8 +28,6 @@ export interface SyncOptions {
   target?: number | null
   /** Re-read whole histories. */
   full?: boolean
-  /** Download missing match details (default true). */
-  details?: boolean
 }
 
 export interface SyncResult {
@@ -39,7 +36,6 @@ export interface SyncResult {
   newMatches: number
   /** New matches per account (for notifications). */
   newByAccount: Record<number, number>
-  details: { fetched: number; fromCloud: number; failed: number; remaining: number }
   /** Why the run stopped early, if it did (budget, rate limit, in game…). */
   stoppedBecause: string | null
   errors: string[]
@@ -111,6 +107,29 @@ async function saveFriends(gc: DeadlockGc, friends: number[]): Promise<void> {
   await (friends.length > 0 ? stale.where('accountId', 'not in', friends) : stale).execute()
 }
 
+/**
+ * Refresh the Steam friend list, names and avatars without syncing matches.
+ * The friends list arrives with the normal Steam logon and personas are
+ * batched over that same connection, so this spends none of the Game
+ * Coordinator history/detail quota. Safe to run while Steam is rate-limiting
+ * history requests (that pause only covers GC requests).
+ */
+export async function refreshFriends(): Promise<number> {
+  const token = await getRefreshToken()
+  if (!token) return 0
+  const gc = new DeadlockGc((t) => void saveRefreshToken(t))
+  try {
+    await gc.connect(token, { checkPlayingState: false })
+    const friends = await gc.getFriendAccountIds()
+    if (!friends) return 0
+    await saveFriends(gc, friends)
+    await updatePlayerRanks([gc.accountId, ...friends])
+    return friends.length
+  } finally {
+    gc.disconnect()
+  }
+}
+
 // ------------------------------------------------------------------ history
 
 /** Returns new match count, or throws. Sets `stop` when budget/rate limit ends the run. */
@@ -126,7 +145,7 @@ async function syncAccount(gc: DeadlockGc, accountId: number, self: number, opts
   let complete = true
   for (let page = 0; page < MAX_PAGES; page++) {
     if ((await budgetLeft('history')) === 0) {
-      flags.stop = 'Reached the daily budget of Steam history requests — the rest continues tomorrow.'
+      flags.stop = "Reached the app's request cap for Steam history. It continues as older requests age out."
       complete = false
       break
     }
@@ -225,74 +244,36 @@ export async function fetchAndStoreMatchDetail(gc: DeadlockGc, matchId: number):
   await db().deleteFrom('matchDetailAttempt').where('matchId', '=', matchId).execute()
 }
 
-async function recordFailedAttempt(matchId: number, error: string): Promise<void> {
-  const attemptedAt = new Date().toISOString()
-  await db()
-    .insertInto('matchDetailAttempt')
-    .values({ matchId, attemptedAt, error })
-    .onConflict((oc) => oc.column('matchId').doUpdateSet({ attemptedAt, error }))
-    .execute()
-}
-
-/** Stored matches (for these players) without current-version details, newest first. */
-export async function missingDetailIds(accountIds: number[] | null): Promise<number[]> {
-  const retryCutoff = new Date(Date.now() - RETRY_FAILED_DETAIL_AFTER_MS).toISOString()
-  let q = db()
-    .selectFrom('playerMatch')
-    .leftJoin('matchDetail', 'matchDetail.matchId', 'playerMatch.matchId')
-    .leftJoin('matchDetailAttempt', 'matchDetailAttempt.matchId', 'playerMatch.matchId')
-    .select((eb) => ['playerMatch.matchId', eb.fn.max('playerMatch.startTime').as('startTime')])
-    .where((eb) => eb.or([eb('matchDetail.matchId', 'is', null), eb(sql<number>`json_extract(${eb.ref('matchDetail.data')}, '$.v')`, '<', MATCH_DETAIL_VERSION)]))
-    .where((eb) => eb.or([eb('matchDetailAttempt.matchId', 'is', null), eb('matchDetailAttempt.attemptedAt', '<', retryCutoff)]))
-    .groupBy('playerMatch.matchId')
-    .orderBy('startTime', 'desc')
-  if (accountIds) q = q.where('playerMatch.accountId', 'in', accountIds)
-  return (await q.execute()).map((r) => r.matchId)
-}
-
-async function backfillDetails(
-  gc: DeadlockGc,
-  accountIds: number[],
-  cloud: DetailsSource | null,
-  onProgress: (p: SyncProgress) => void,
-): Promise<{ result: SyncResult['details']; stop: string | null }> {
-  const result = { fetched: 0, fromCloud: 0, failed: 0, remaining: 0 }
-  let missing = await missingDetailIds(accountIds)
-  if (missing.length === 0) return { result, stop: null }
-
-  // Cloud first: details any install already downloaded cost no Steam requests.
-  if (cloud) {
-    onProgress({ step: 'Checking the cloud for match details' })
-    const got = await cloud.pull(missing).catch(() => new Set<number>())
-    result.fromCloud = got.size
-    missing = missing.filter((id) => !got.has(id))
+/**
+ * Fill in stored rank badges from deadlock-api's batch rank endpoint. This is
+ * a community API request, not Steam, so it doesn't touch the GC quota. Badge
+ * 0 means "no recent ranked match reports a rank"; leave the stored value
+ * alone then, and the UI shows Unranked when nothing is known.
+ */
+async function updatePlayerRanks(accountIds: number[]): Promise<void> {
+  if (accountIds.length === 0) return
+  try {
+    const ranks = await fetchPlayerRanks(accountIds)
+    const updates = ranks.filter((r) => r.badge > 0)
+    if (updates.length === 0) return
+    const d = db()
+    await runCompiled(
+      updates.map((r) =>
+        d
+          .updateTable('player')
+          .set({ rankBadge: r.badge })
+          .where('accountId', '=', r.account_id)
+          .compile(),
+      ),
+    )
+  } catch {
+    // Ranks are cosmetic; the next sync or friend refresh retries.
   }
-  result.remaining = missing.length
-
-  for (const [i, matchId] of missing.entries()) {
-    if ((await budgetLeft('details')) === 0) return { result, stop: 'Reached the daily budget of match-detail requests — the rest continues tomorrow.' }
-    onProgress({ step: 'Downloading match details', done: i, total: missing.length })
-    try {
-      await fetchAndStoreMatchDetail(gc, matchId)
-      result.fetched++
-      result.remaining--
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (err instanceof GcError && err.code === 'rate_limited') {
-        await startBackoff()
-        return { result, stop: 'Steam rate-limited match-detail requests. Pausing Steam requests for 2 hours.' }
-      }
-      if (err instanceof GcError && SESSION_OVER.includes(err.code)) return { result, stop: message }
-      if (!(err instanceof GcError && err.code === 'in_flight')) await recordFailedAttempt(matchId, message)
-      result.failed++
-    }
-  }
-  return { result, stop: null }
 }
 
 // ------------------------------------------------------------------ run
 
-export async function runSync(opts: SyncOptions, onProgress: (p: SyncProgress) => void, cloud: DetailsSource | null): Promise<SyncResult> {
+export async function runSync(opts: SyncOptions, onProgress: (p: SyncProgress) => void): Promise<SyncResult> {
   const token = await getRefreshToken()
   if (!token) throw new SyncAbort('Connect your Steam account in Settings first.')
   const until = await backoffUntil()
@@ -304,7 +285,6 @@ export async function runSync(opts: SyncOptions, onProgress: (p: SyncProgress) =
     players: 0,
     newMatches: 0,
     newByAccount: {},
-    details: { fetched: 0, fromCloud: 0, failed: 0, remaining: 0 },
     stoppedBecause: null,
     errors: [],
   }
@@ -342,12 +322,7 @@ export async function runSync(opts: SyncOptions, onProgress: (p: SyncProgress) =
     }
     result.stoppedBecause = flags.stop
 
-    const sessionOk = !flags.stop || flags.stop.includes('budget')
-    if (opts.details !== false && sessionOk && !(await backoffUntil())) {
-      const { result: details, stop } = await backfillDetails(gc, targets, cloud, onProgress)
-      result.details = details
-      result.stoppedBecause ??= stop
-    }
+    await updatePlayerRanks(targets)
     return result
   } catch (err) {
     if (err instanceof GcError && err.code === 'login') throw new SyncAbort('Your Steam login expired. Reconnect Steam in Settings.')
@@ -367,7 +342,7 @@ export async function syncOneMatch(matchId: number, cloud: DetailsSource | null)
   const token = await getRefreshToken()
   if (!token) throw new SyncAbort('Connect your Steam account in Settings first.')
   if (await backoffUntil()) throw new SyncAbort('Steam asked us to slow down; try again later.')
-  if ((await budgetLeft('details')) === 0) throw new SyncAbort('Daily budget of match-detail requests used up; try again tomorrow.')
+  if ((await budgetLeft('details')) === 0) throw new SyncAbort('Steam request cap reached; try again later.')
   const gc = new DeadlockGc((t) => void saveRefreshToken(t))
   try {
     await gc.connect(token)

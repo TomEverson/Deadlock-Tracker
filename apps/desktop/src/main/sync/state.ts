@@ -26,10 +26,11 @@ export async function deleteState(key: string): Promise<void> {
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
- * Rolling 24h logs of Game Coordinator requests. Valve publishes no limits;
+ * Rolling 24h logs of Game Coordinator requests. Valve publishes no limits, so
+ * these caps are only a local safety valve to stop a runaway sync; Steam's
+ * RateLimited answer is the real limit, and the engine backs off when it says so.
  * deadlock-api budgets each account at ~50/day for history and ~50/day for
- * match details, and Steam answered RateLimited at ~55 details in testing.
- * We stay under both.
+ * match details.
  */
 export const BUDGETS = {
   history: { key: 'gc.log.history', limit: 40 },

@@ -15,13 +15,8 @@ import { CLOUD_URL, clearCloudSession, cloudFetch, getCloudToken, saveCloudSessi
 const RETURN = 'deadlock-tracker://auth'
 const STEAM = 'https://steamcommunity.com'
 const AUTO_TIMEOUT_MS = 30_000
-// Don't keep retrying an account the admin hasn't allowed yet.
-const NOT_ALLOWED_RETRY_MS = 30 * 60 * 1000
 
-export type CloudSignInState =
-  | { kind: 'signed-in' }
-  | { kind: 'not-allowed'; accountId: number; at: string }
-  | { kind: 'error'; message: string; at: string }
+export type CloudSignInState = { kind: 'signed-in' } | { kind: 'error'; message: string; at: string }
 
 const STATE_KEY = 'cloud.signIn'
 
@@ -40,7 +35,7 @@ const CONFIRM_SCRIPT = `(() => {
   return false
 })()`
 
-async function openIdSignIn(refreshToken: string): Promise<{ token: string } | { error: string; account?: string }> {
+async function openIdSignIn(refreshToken: string): Promise<{ token: string } | { error: string }> {
   const partition = `steam-signin-${Date.now()}`
   const ses = session.fromPartition(partition)
   for (const c of await steamWebCookies(refreshToken)) {
@@ -50,7 +45,7 @@ async function openIdSignIn(refreshToken: string): Promise<{ token: string } | {
   try {
     return await new Promise((resolve) => {
       const timer = setTimeout(() => resolve({ error: 'timeout' }), AUTO_TIMEOUT_MS)
-      const finish = (r: { token: string } | { error: string; account?: string }) => {
+      const finish = (r: { token: string } | { error: string }) => {
         clearTimeout(timer)
         resolve(r)
       }
@@ -59,7 +54,7 @@ async function openIdSignIn(refreshToken: string): Promise<{ token: string } | {
         event.preventDefault()
         const params = new URL(url).searchParams
         const token = params.get('token')
-        finish(token ? { token } : { error: params.get('error') ?? 'server_error', account: params.get('account') ?? undefined })
+        finish(token ? { token } : { error: params.get('error') ?? 'server_error' })
       }
       win.webContents.on('will-redirect', catchReturn)
       win.webContents.on('will-navigate', catchReturn)
@@ -79,17 +74,11 @@ async function openIdSignIn(refreshToken: string): Promise<{ token: string } | {
   }
 }
 
-/**
- * Make sure the cloud session exists, using the connected Steam account.
- * Quiet: never opens anything visible. `force` retries even right after a
- * "not allowed" answer (e.g. the user pressed Retry).
- */
-export async function ensureCloudSession(force = false): Promise<CloudSignInState | null> {
+/** Make sure the cloud session exists, using the connected Steam account. Quiet: never opens anything visible. */
+export async function ensureCloudSession(): Promise<CloudSignInState | null> {
   if (await getCloudToken()) return { kind: 'signed-in' }
   const refreshToken = await getRefreshToken()
   if (!refreshToken) return null
-  const last = await getState<CloudSignInState>(STATE_KEY)
-  if (!force && last?.kind === 'not-allowed' && Date.now() - Date.parse(last.at) < NOT_ALLOWED_RETRY_MS) return last
 
   const at = new Date().toISOString()
   let state: CloudSignInState
@@ -99,8 +88,6 @@ export async function ensureCloudSession(force = false): Promise<CloudSignInStat
       const me = await cloudFetch<MeResult>('/v1/me', { token: result.token })
       await saveCloudSession(result.token, me)
       state = { kind: 'signed-in' }
-    } else if (result.error === 'not_allowed') {
-      state = { kind: 'not-allowed', accountId: Number(result.account ?? 0), at }
     } else {
       state = { kind: 'error', message: MESSAGES[result.error] ?? 'Cloud sign-in failed.', at }
     }

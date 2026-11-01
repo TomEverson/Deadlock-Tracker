@@ -1,22 +1,19 @@
-import { BrowserWindow, Notification } from 'electron'
 import type { SyncRunSummary, SyncStatus } from '../../shared/api'
 import { broadcast } from '../broadcast'
 import { ensureCloudSession } from '../cloud/auth'
 import { cloudDetailsSource, cloudSync } from '../cloud/sync'
-import { db } from '../db'
 import { getSteamAccount, hasCliLogin } from '../steam/account'
-import { runSync, syncOneMatch, SyncAbort, type SyncOptions } from './engine'
-import { BUDGETS, backoffUntil, budgetUsed, getState, setState } from './state'
+import { runSync, refreshFriends, syncOneMatch, SyncAbort, type SyncOptions } from './engine'
+import { backoffUntil, budgetUsed, getState, setState } from './state'
 
-// Runs sync on launch, every 30 minutes and on demand; keeps one status
-// object that the renderer mirrors (sidebar widget, Settings).
-
-const FIRST_RUN_DELAY_MS = 15_000
-const INTERVAL_MS = 30 * 60 * 1000
+// Steam sync is manual only (the sidebar's Sync now, Settings, a player's
+// Sync button, or connecting Steam). Keeping it manual avoids burning Valve's
+// undocumented request limit in the background. One status object is mirrored
+// to the renderer (sidebar widget, Settings).
 
 let running = false
+let friendsRefresh: Promise<void> | null = null
 let live: Pick<SyncStatus, 'step' | 'progress' | 'message' | 'messageTone'> = { step: null, progress: null, message: null, messageTone: null }
-let nextAutoAt: number | null = null
 
 export async function getSyncStatus(): Promise<SyncStatus> {
   const until = await backoffUntil()
@@ -24,11 +21,10 @@ export async function getSyncStatus(): Promise<SyncStatus> {
     state: running ? 'running' : 'idle',
     ...live,
     last: await getState<SyncRunSummary>('sync.last'),
-    nextAutoAt: nextAutoAt ? new Date(nextAutoAt).toISOString() : null,
     backoffUntil: until ? new Date(until).toISOString() : null,
     budgets: {
-      history: { used: await budgetUsed('history'), limit: BUDGETS.history.limit },
-      details: { used: await budgetUsed('details'), limit: BUDGETS.details.limit },
+      history: { used: await budgetUsed('history') },
+      details: { used: await budgetUsed('details') },
     },
     steam: await getSteamAccount(),
     hasCliLogin: hasCliLogin(),
@@ -39,25 +35,16 @@ async function publish(): Promise<void> {
   broadcast('sync:status', await getSyncStatus())
 }
 
-async function notifyNewMatches(newByAccount: Record<number, number>, self: number): Promise<void> {
-  if (!Notification.isSupported() || BrowserWindow.getFocusedWindow()) return
-  const mine = newByAccount[self] ?? 0
-  const friendIds = Object.keys(newByAccount).map(Number).filter((id) => id !== self)
-  if (mine === 0 && friendIds.length === 0) return
-  const names = (await db().selectFrom('player').select('personaName').where('accountId', 'in', friendIds.length ? friendIds : [-1]).execute())
-    .map((r) => r.personaName)
-    .filter(Boolean)
-  const parts = [mine ? `${mine} new match${mine === 1 ? '' : 'es'}` : null, friendIds.length ? `${names.slice(0, 2).join(', ')}${names.length > 2 ? ` +${names.length - 2}` : ''} played` : null]
-  new Notification({ title: 'Deadlock Tracker', body: parts.filter(Boolean).join(' · ') }).show()
-}
-
 async function run(trigger: 'auto' | 'manual', opts: SyncOptions = {}): Promise<void> {
   if (running) return
   running = true
   live = { step: 'Starting', progress: null, message: null, messageTone: null }
   await publish()
-  const summary: SyncRunSummary = { at: new Date().toISOString(), trigger, newMatches: 0, players: 0, detailsFetched: 0, detailsFromCloud: 0, detailsRemaining: 0, cloud: null, note: null }
+  const summary: SyncRunSummary = { at: new Date().toISOString(), trigger, newMatches: 0, players: 0, cloud: null, note: null }
   try {
+    // A launch friend refresh may still be logging on; don't open a second
+    // Steam session on top of it.
+    if (friendsRefresh) await friendsRefresh
     // Pull first so other installs' data (and match details) are here before we ask Steam.
     live.step = 'Syncing with the cloud'
     await publish()
@@ -66,26 +53,18 @@ async function run(trigger: 'auto' | 'manual', opts: SyncOptions = {}): Promise<
 
     if (await getSteamAccount()) {
       try {
-        const r = await runSync(
-          opts,
-          (p) => {
-            live.step = p.step
-            live.progress = p.total ? { done: p.done ?? 0, total: p.total } : null
-            void publish()
-          },
-          cloudDetailsSource(),
-        )
+        const r = await runSync(opts, (p) => {
+          live.step = p.step
+          live.progress = p.total ? { done: p.done ?? 0, total: p.total } : null
+          void publish()
+        })
         Object.assign(summary, {
           newMatches: r.newMatches,
           players: r.players,
-          detailsFetched: r.details.fetched,
-          detailsFromCloud: r.details.fromCloud,
-          detailsRemaining: r.details.remaining,
           note: r.stoppedBecause ?? (r.errors.length ? r.errors[0] : null),
         })
         live.message = r.stoppedBecause
         live.messageTone = r.stoppedBecause ? 'warn' : null
-        if (trigger === 'auto') void notifyNewMatches(r.newByAccount, r.selfAccountId)
       } catch (err) {
         live.message = err instanceof Error ? err.message : String(err)
         live.messageTone = err instanceof SyncAbort ? 'warn' : 'error'
@@ -109,20 +88,26 @@ async function run(trigger: 'auto' | 'manual', opts: SyncOptions = {}): Promise<
   }
 }
 
-export function startScheduler(): void {
-  nextAutoAt = Date.now() + FIRST_RUN_DELAY_MS
-  setTimeout(() => {
-    void run('auto')
-    setInterval(() => {
-      nextAutoAt = Date.now() + INTERVAL_MS
-      void run('auto')
-    }, INTERVAL_MS)
-    nextAutoAt = Date.now() + INTERVAL_MS
-  }, FIRST_RUN_DELAY_MS)
-}
-
 export function runNow(opts: { accountId?: number; full?: boolean } = {}): void {
   void run('manual', { target: opts.accountId ?? null, full: opts.full })
+}
+
+/**
+ * On app launch, refresh just the friend list and personas. This uses the
+ * normal Steam connection (no Game Coordinator requests), so it doesn't touch
+ * the match-history/detail rate limits. Silent on failure: a manual Sync still
+ * reloads the list.
+ */
+export function refreshFriendsNow(): void {
+  if (running || friendsRefresh) return
+  friendsRefresh = refreshFriends()
+    .then(() => {
+      broadcast('data:changed', null)
+    })
+    .catch(() => {})
+    .finally(() => {
+      friendsRefresh = null
+    })
 }
 
 export async function fetchMatchNow(matchId: number): Promise<{ ok: true } | { ok: false; message: string }> {

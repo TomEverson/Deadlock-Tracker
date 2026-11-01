@@ -1,6 +1,6 @@
 import type { MatchDetailResult } from '@deadlock/core/domain/matches/types'
 import type { FriendList, Mate, PlayerOverview, PlayerSearchResult } from '@deadlock/core/domain/players/types'
-import type { AllowlistEntry, MeResult } from '@deadlock/core/sync/protocol'
+import type { MeResult } from '@deadlock/core/sync/protocol'
 
 // The renderer ↔ main contract. Each method is one ipcMain.handle channel
 // ("players:overview" etc.); the preload exposes them as window.api.
@@ -12,13 +12,6 @@ export type SearchResult =
   | { kind: 'error'; message: string }
 
 export type MatesResult = { kind: 'ok'; mates: Mate[] } | { kind: 'unavailable'; mates: Mate[] }
-
-export interface LegacyImportStatus {
-  /** Path of the previous version's saved database, when there is one. */
-  found: string | null
-  /** True when the local database already has matches. */
-  hasData: boolean
-}
 
 export interface SteamAccount {
   accountId: number
@@ -46,9 +39,6 @@ export interface SyncRunSummary {
   trigger: 'auto' | 'manual'
   newMatches: number
   players: number
-  detailsFetched: number
-  detailsFromCloud: number
-  detailsRemaining: number
   cloud: CloudSyncResult | null
   note: string | null
 }
@@ -61,9 +51,8 @@ export interface SyncStatus {
   message: string | null
   messageTone: 'info' | 'warn' | 'error' | null
   last: SyncRunSummary | null
-  nextAutoAt: string | null
   backoffUntil: string | null
-  budgets: { history: { used: number; limit: number }; details: { used: number; limit: number } }
+  budgets: { history: { used: number }; details: { used: number } }
   steam: SteamAccount | null
   hasCliLogin: boolean
 }
@@ -72,7 +61,7 @@ export interface CloudStatus {
   url: string
   account: MeResult | null
   /** Result of the last automatic sign-in attempt (when not signed in). */
-  signIn: { kind: 'not-allowed'; accountId: number; at: string } | { kind: 'error'; message: string; at: string } | null
+  signIn: { kind: 'error'; message: string; at: string } | null
   lastSync: { at: string; error: string | null } | null
   /** Local changes not pushed yet. */
   pending: number
@@ -90,10 +79,6 @@ export interface DesktopApi {
   matches: {
     detail(matchId: number): Promise<MatchDetailResult>
   }
-  data: {
-    legacyStatus(): Promise<LegacyImportStatus>
-    importLegacy(): Promise<{ players: number; matches: number; details: number }>
-  }
   steam: {
     loginQr(): Promise<void>
     loginPassword(accountName: string, password: string): Promise<void>
@@ -106,10 +91,6 @@ export interface DesktopApi {
     status(): Promise<CloudStatus>
     /** Retry signing in to the cloud with the connected Steam account. */
     signIn(): Promise<void>
-    allowlist(): Promise<AllowlistEntry[]>
-    /** `who`: account id, SteamID64 or profile URL. */
-    allow(who: string, role: 'admin' | 'member'): Promise<{ ok: true } | { ok: false; message: string }>
-    revoke(accountId: number): Promise<{ ok: true } | { ok: false; message: string }>
   }
   sync: {
     status(): Promise<SyncStatus>
@@ -135,8 +116,7 @@ export const EVENTS = ['sync:status', 'steam:login', 'data:changed'] as const sa
 export const CHANNELS = {
   players: ['overview', 'mates', 'friends', 'search', 'selfAccountId'],
   matches: ['detail'],
-  data: ['legacyStatus', 'importLegacy'],
   steam: ['loginQr', 'loginPassword', 'submitCode', 'cancelLogin', 'disconnect', 'importCliLogin'],
-  cloud: ['status', 'signIn', 'allowlist', 'allow', 'revoke'],
+  cloud: ['status', 'signIn'],
   sync: ['status', 'run', 'match'],
 } as const satisfies { [K in Exclude<keyof DesktopApi, 'platform' | 'on'>]: readonly (keyof DesktopApi[K])[] }

@@ -85,6 +85,8 @@ export interface Friend {
   wins: number
   /** Unix seconds of their latest stored match. */
   lastMatchAt: number | null
+  /** When this player's match history was last read from Steam (ISO date), or null if never. */
+  lastSyncedAt: string | null
 }
 
 export interface FriendList {
