@@ -52,4 +52,3 @@ cost no Steam requests.
 ```bash
 pnpm typecheck && pnpm lint
 ```
-# Deadlock-Log
