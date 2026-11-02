@@ -1,16 +1,11 @@
-import { useState } from 'react'
-import { Card, HeroIcon } from '~/components/ui'
+import { Card } from '~/components/ui'
 import { formatDuration } from '@deadlock/core/lib/format'
-import type { HeroInfo, ItemInfo } from '@deadlock/core/domain/assets/types'
+import type { ItemInfo } from '@deadlock/core/domain/assets/types'
 import type { BuildNote, HeroCoaching, HeroCoachingResult, StatRow } from '@deadlock/core/domain/players/services/hero-coaching'
 import { ItemHover, SLOT_COLOR } from '~/domain/matches/components/ItemHover'
 
 const fmt = (v: number, f: StatRow['format']) => (f === 'pct' ? `${Math.round(v * 100)}%` : f === 'int' ? String(Math.round(v)) : v.toFixed(1))
 const pct = (x: number) => `${Math.round(x * 100)}%`
-
-function heroOf(info: Record<number, HeroInfo>, id: number): HeroInfo {
-  return info[id] ?? { id, name: `Hero ${id}`, icon: null, card: null }
-}
 
 export function benchmarkText(result: HeroCoachingResult): string {
   const rank = result.benchmark.rank?.name ?? 'Ascendant'
@@ -160,42 +155,20 @@ function BuildNotes({ hero, items }: { hero: HeroCoaching; items: Record<number,
   )
 }
 
-export function HeroCoachingView({ result }: { result: HeroCoachingResult }) {
-  const [selected, setSelected] = useState<number | null>(result.heroes[0]?.heroId ?? null)
-  const hero = result.heroes.find((h) => h.heroId === selected) ?? result.heroes[0]
-  if (!hero) return <p className="text-sm text-muted">Play at least 3 games on a hero to get hero coaching.</p>
+/** One hero's comparison with top players: diagnosis, stats and build. */
+export function HeroCoachingCards({ result, hero }: { result: HeroCoachingResult; hero: HeroCoaching }) {
   const bad = hero.diagnosis.filter((d) => d.tone === 'bad')
   const good = hero.diagnosis.filter((d) => d.tone === 'good')
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Hero">
-        {result.heroes.map((h) => (
-          <button
-            key={h.heroId}
-            type="button"
-            role="tab"
-            aria-selected={h.heroId === hero.heroId}
-            onClick={() => setSelected(h.heroId)}
-            className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm ${h.heroId === hero.heroId ? 'border-accent bg-accent/10 text-ink' : 'border-line text-ink-2 hover:border-line-strong'}`}
-          >
-            <HeroIcon hero={heroOf(result.heroInfo, h.heroId)} size={22} />
-            {h.heroName}
-            <span className="num text-xs text-muted">{h.games}</span>
-          </button>
-        ))}
-      </div>
-
       <Card
-        title={
-          <span className="flex items-center gap-2">
-            <HeroIcon hero={heroOf(result.heroInfo, hero.heroId)} size={22} />
-            {hero.heroName}
-          </span>
-        }
+        title={`${hero.heroName} vs top players`}
         right={
-          <span className="num text-xs text-muted">
-            you {hero.wins}–{hero.games - hero.wins} ({pct(hero.wins / hero.games)}){hero.topWinRate != null ? ` · top players win ${pct(hero.topWinRate)} (${hero.topGames.toLocaleString()} games)` : ''}
-          </span>
+          hero.topWinRate != null ? (
+            <span className="num text-xs text-muted">
+              top players win {pct(hero.topWinRate)} ({hero.topGames.toLocaleString()} games)
+            </span>
+          ) : undefined
         }
       >
         {hero.job && hero.job.tags.length > 0 && (
@@ -230,7 +203,7 @@ export function HeroCoachingView({ result }: { result: HeroCoachingResult }) {
           <div>
             <div className="mb-3 text-xs font-medium text-win">What you do well</div>
             {good.length === 0 ? (
-              <p className="text-sm text-muted">No stat in the top quarter yet.</p>
+              <p className="text-sm text-muted">No stat at top-player level yet.</p>
             ) : (
               <ul className="grid gap-3">
                 {good.map((d) => (
@@ -256,7 +229,7 @@ export function HeroCoachingView({ result }: { result: HeroCoachingResult }) {
         </p>
       </Card>
 
-      <Card title="Build">
+      <Card title="Build vs top players">
         <BuildNotes hero={hero} items={result.items} />
       </Card>
 

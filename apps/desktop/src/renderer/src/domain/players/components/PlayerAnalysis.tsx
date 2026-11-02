@@ -2,12 +2,14 @@ import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { Card, Segmented } from '~/components/ui'
 import { useSyncStatus } from '~/domain/sync/hooks'
-import type { Habit, OverallAnalysis, PeriodStat, TrendPoint, WinCondition } from '@deadlock/core/domain/players/services/overall-analysis'
+import type { Habit, OverallAnalysis, PeriodStat, PlayerAnalysisResult, TrendPoint, WinCondition } from '@deadlock/core/domain/players/services/overall-analysis'
 import type { HeroCoachingResult } from '@deadlock/core/domain/players/services/hero-coaching'
 import { HeroIcon } from '~/components/ui'
-import { benchmarkText, crossHeroPatterns, HeroCoachingView } from './HeroCoachingView'
+import { benchmarkText, crossHeroPatterns } from './HeroCoachingView'
+import { HeroesSection } from './HeroesSection'
+import { DeathsSection } from './DeathsSection'
 
-type Section = 'summary' | 'heroes' | 'conditions' | 'trends'
+type Section = 'summary' | 'heroes' | 'deaths' | 'conditions' | 'trends'
 
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
@@ -426,7 +428,7 @@ function Trends({ analysis }: { analysis: OverallAnalysis }) {
 
 // ------------------------------------------------------------------ page
 
-export function PlayerAnalysis({ analysis, accountId }: { analysis: OverallAnalysis; accountId: number }) {
+export function PlayerAnalysis({ analysis, accountId }: { analysis: PlayerAnalysisResult; accountId: number }) {
   const [section, setSection] = useState<Section>('summary')
   // Hero benchmarks come from the community API: load once per player, in the background.
   // Keyed by account so switching players shows "loading" instead of the previous player's result.
@@ -452,6 +454,7 @@ export function PlayerAnalysis({ analysis, accountId }: { analysis: OverallAnaly
         options={[
           { value: 'summary', label: 'Summary' },
           { value: 'heroes', label: 'Heroes' },
+          { value: 'deaths', label: 'Deaths & fights' },
           { value: 'conditions', label: 'Win conditions' },
           { value: 'trends', label: 'Trends' },
         ]}
@@ -462,14 +465,8 @@ export function PlayerAnalysis({ analysis, accountId }: { analysis: OverallAnaly
           <Summary analysis={analysis} accountId={accountId} />
         </div>
       )}
-      {section === 'heroes' &&
-        (coaching === 'loading' ? (
-          <p className="text-sm text-muted">Comparing your heroes with top players…</p>
-        ) : coaching && !coaching.error ? (
-          <HeroCoachingView result={coaching} />
-        ) : (
-          <p className="text-sm text-muted">Couldn't load hero benchmarks{coaching?.error ? `: ${coaching.error}` : ''}.</p>
-        ))}
+      {section === 'heroes' && <HeroesSection analysis={analysis} coaching={coaching} />}
+      {section === 'deaths' && <DeathsSection analysis={analysis} />}
       {section === 'conditions' && <Conditions analysis={analysis} />}
       {section === 'trends' && <Trends analysis={analysis} />}
     </div>

@@ -1,7 +1,10 @@
-import type { ItemInfo } from '../../assets/types'
+import type { HeroInfo, ItemInfo } from '../../assets/types'
 import { analyzeMatch, hasAnalysisData, type Finding } from '../../matches/services/analysis'
 import { hasObjectiveData, objectivesReport } from '../../matches/services/objectives'
 import type { MatchDetailData } from '../../matches/validators/match-detail'
+import { coachReview } from '../../matches/services/coach'
+import { deathPoints, deathsSummary, fightFacts, lobbyDeaths, type DeathPoint, type DeathsSummary, type FightFacts, type LobbyDeaths } from './player-deaths'
+import { heroGameFacts, heroSummaries, LANE_SWING, type HeroGameFacts, type HeroSummary } from './player-heroes'
 
 // A player's analysis across their stored matches. Pure. Two inputs:
 // - games: the match list (every match: result, K/D/A, souls, length)
@@ -91,6 +94,30 @@ export interface OverallAnalysis {
   recentWindow: number
   compare: PeriodStat[]
   sessions: SessionStat[]
+  /** Every hero you played, most played first. */
+  heroes: HeroSummary[]
+  deaths: DeathsSummary
+}
+
+/** What the app sends the page: the analysis plus the heroes and items it mentions. */
+export interface PlayerAnalysisResult extends OverallAnalysis {
+  heroInfo: Record<number, HeroInfo>
+  items: Record<number, ItemInfo>
+}
+
+/** Hero and item ids the analysis mentions (for icons). */
+export function referencedIds(a: OverallAnalysis): { heroes: number[]; items: number[] } {
+  const heroes = new Set<number>()
+  const items = new Set<number>()
+  for (const h of a.heroes) {
+    heroes.add(h.heroId)
+    for (const m of h.matchups) heroes.add(m.heroId)
+    for (const m of h.laneMatchups) heroes.add(m.heroId)
+    for (const t of h.itemTiming) items.add(t.itemId)
+  }
+  for (const k of a.deaths.killers) heroes.add(k.heroId)
+  for (const t of a.trend) heroes.add(t.heroId)
+  return { heroes: [...heroes], items: [...items] }
 }
 
 const TREND_GAMES = 50
@@ -145,6 +172,10 @@ interface GameFacts {
   grade: string
   deaths: number
   conditions: Record<string, boolean | undefined>
+  hero: HeroGameFacts
+  deathPoints: DeathPoint[]
+  fights: FightFacts | null
+  lobbyDeaths: LobbyDeaths | null
 }
 
 function factsFor(detail: MatchDetailData, accountId: number, heroName: (id: number) => string, items: Record<number, ItemInfo>): GameFacts | null {
@@ -166,6 +197,7 @@ function factsFor(detail: MatchDetailData, accountId: number, heroName: (id: num
   const firstBoss = detail.midBoss[0]
   const obj = hasObjectiveData(detail) ? objectivesReport(detail, team) : null
   const lead10 = detail.durationS > 660 ? leadAt(600) : undefined
+  const review = coachReview(detail, a, heroName, { accountId, isSelf: true })
 
   return {
     matchId: detail.matchId,
@@ -176,7 +208,7 @@ function factsFor(detail: MatchDetailData, accountId: number, heroName: (id: num
     grade: report.grade,
     deaths: me.deaths,
     conditions: {
-      'lane-won': lane ? (lane.soulDiff >= 500 ? true : lane.soulDiff <= -500 ? false : undefined) : undefined,
+      'lane-won': lane ? (lane.soulDiff >= LANE_SWING ? true : lane.soulDiff <= -LANE_SWING ? false : undefined) : undefined,
       'lead-10': lead10 == null || lead10 === 0 ? undefined : lead10 > 0,
       'first-building': firstBuilding ? firstBuilding.team !== team : undefined,
       'first-midboss': firstBoss ? firstBoss.teamClaimed === team : undefined,
@@ -184,6 +216,10 @@ function factsFor(detail: MatchDetailData, accountId: number, heroName: (id: num
       'more-buffs': obj && obj.ours.permanentBuffs !== obj.theirs.permanentBuffs ? obj.ours.permanentBuffs > obj.theirs.permanentBuffs : undefined,
       'high-impact': report.grade === 'S' || report.grade === 'A',
     },
+    hero: heroGameFacts(detail, me, a, report.score, items),
+    deathPoints: deathPoints(detail, me),
+    fights: fightFacts(review, me),
+    lobbyDeaths: lobbyDeaths(detail),
   }
 }
 
@@ -337,5 +373,10 @@ export function overallAnalysis(input: {
     recentWindow: RECENT,
     compare,
     sessions: sessions(games),
+    heroes: heroSummaries(games, facts.map((f) => f.hero)),
+    deaths: deathsSummary(
+      facts.map((f) => ({ points: f.deathPoints, fights: f.fights, lobby: f.lobbyDeaths })),
+      heroName,
+    ),
   }
 }

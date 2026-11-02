@@ -1,5 +1,5 @@
 import type { MatchDetailResult } from '@deadlock/core/domain/matches/types'
-import type { OverallAnalysis } from '@deadlock/core/domain/players/services/overall-analysis'
+import type { PlayerAnalysisResult } from '@deadlock/core/domain/players/services/overall-analysis'
 import type { HeroCoachingResult } from '@deadlock/core/domain/players/services/hero-coaching'
 import type { FriendList, Mate, PlayerOverview, PlayerSearchResult } from '@deadlock/core/domain/players/types'
 import type { MeResult } from '@deadlock/core/sync/protocol'
@@ -82,7 +82,7 @@ export interface DesktopApi {
     search(q: string): Promise<SearchResult>
     selfAccountId(): Promise<number | null>
     /** Cross-match analysis: habits, win conditions, trends. */
-    analysis(accountId: number): Promise<OverallAnalysis>
+    analysis(accountId: number): Promise<PlayerAnalysisResult>
     /** Per-hero coaching vs the same hero at the player's rank (community benchmarks; network). */
     heroCoaching(accountId: number): Promise<HeroCoachingResult>
   }

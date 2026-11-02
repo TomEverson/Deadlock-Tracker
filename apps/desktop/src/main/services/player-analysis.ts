@@ -1,8 +1,8 @@
 import { db as getDb } from '../db'
 import { matchDetailSchema, type MatchDetailData } from '@deadlock/core/domain/matches/validators/match-detail'
-import { overallAnalysis, type OverallAnalysis } from '@deadlock/core/domain/players/services/overall-analysis'
-import type { ItemInfo } from '@deadlock/core/domain/assets/types'
-import { getHeroMap, getItemMap } from './assets'
+import { overallAnalysis, referencedIds, type PlayerAnalysisResult } from '@deadlock/core/domain/players/services/overall-analysis'
+import type { HeroInfo, ItemInfo } from '@deadlock/core/domain/assets/types'
+import { getHeroMap, getItemMap, heroOrFallback } from './assets'
 import { listPlayerMatches } from './player-repo'
 
 // Cross-match analysis for one player, computed here (the details are
@@ -11,7 +11,7 @@ import { listPlayerMatches } from './player-repo'
 /** Detailed games analyzed per request, newest first. */
 const MAX_DETAILED = 100
 
-export async function buildPlayerAnalysis(accountId: number): Promise<OverallAnalysis> {
+export async function buildPlayerAnalysis(accountId: number): Promise<PlayerAnalysisResult> {
   const rows = await listPlayerMatches(accountId)
   const ids = rows.slice(0, MAX_DETAILED).map((r) => r.matchId)
   const detailRows = ids.length ? await getDb().selectFrom('matchDetail').select(['data']).where('matchId', 'in', ids).execute() : []
@@ -24,8 +24,8 @@ export async function buildPlayerAnalysis(accountId: number): Promise<OverallAna
       // unreadable row: skip it
     }
   }
-  const [heroMap, itemMap] = await Promise.all([getHeroMap().catch(() => new Map()), getItemMap().catch(() => new Map<number, ItemInfo>())])
-  return overallAnalysis({
+  const [heroMap, itemMap] = await Promise.all([getHeroMap().catch(() => new Map<number, HeroInfo>()), getItemMap().catch(() => new Map<number, ItemInfo>())])
+  const analysis = overallAnalysis({
     accountId,
     games: rows.map((r) => ({
       matchId: r.matchId,
@@ -42,4 +42,10 @@ export async function buildPlayerAnalysis(accountId: number): Promise<OverallAna
     heroName: (id) => heroMap.get(id)?.name ?? `Hero ${id}`,
     items: Object.fromEntries(itemMap),
   })
+  const refs = referencedIds(analysis)
+  return {
+    ...analysis,
+    heroInfo: Object.fromEntries(refs.heroes.map((id) => [id, heroOrFallback(heroMap, id)])),
+    items: Object.fromEntries(refs.items.flatMap((id) => (itemMap.has(id) ? [[id, itemMap.get(id)!]] : []))),
+  }
 }
