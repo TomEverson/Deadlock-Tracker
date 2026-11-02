@@ -1,7 +1,7 @@
 {
   "name": "@deadlock/desktop",
   "productName": "Deadlock Tracker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Deadlock match tracker \u2014 syncs from Steam locally, shares through Cloudflare.",
